@@ -75,6 +75,61 @@ impl PartsDiff {
         line_string
     }
 }
+#[pyclass(name = "Part", get_all)]
+#[derive(Clone)]
+struct PyPart {
+    value: String,
+    kind: String, // EQUAL|DELETE|INSERT
+}
+impl PartialEq for PyPart {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value && self.kind == other.kind
+    }
+}
+
+#[pymethods]
+impl PyPart {
+    #[new]
+    fn new(value: String, kind: String) -> Self {
+        PyPart { value, kind }
+    }
+    fn __eq__(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+#[pyclass(name = "Diff", get_all)]
+#[derive(Clone)]
+struct PyLinePartsDiff {
+    left_lineno: i64,
+    left: Vec<PyPart>,
+    right_lineno: i64,
+    right: Vec<PyPart>,
+}
+#[pymethods]
+impl PyLinePartsDiff {
+    #[new]
+    fn new<'a>(
+        _py: Python<'a>,
+        left_lineno: i64,
+        left: Vec<Py<PyPart>>,
+        right_lineno: i64,
+        right: Vec<Py<PyPart>>,
+    ) -> PyResult<Self> {
+        Ok(PyLinePartsDiff {
+            left_lineno,
+            left: left.iter().map(|p| p.extract(_py).unwrap()).collect(),
+            right_lineno,
+            right: right.iter().map(|p| p.extract(_py).unwrap()).collect(),
+        })
+    }
+    fn __eq__(&self, other: &Self) -> bool {
+        self.left_lineno == other.left_lineno
+            && self.left == other.left
+            && self.right_lineno == other.right_lineno
+            && self.right == other.right
+    }
+}
 
 fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     let diff = TextDiff::from_chars(&a, &b);
@@ -178,7 +233,9 @@ fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDi
 #[pymodule]
 #[pyo3(name = "ocdiff")]
 fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
-    // Attempts to replicated the interface of difflib._mdiff
+    m.add_class::<PyPart>()?;
+    m.add_class::<PyLinePartsDiff>()?;
+
     #[pyfn(m)]
     #[pyo3(name = "diff_lines")]
     fn diff_lines<'a>(_py: Python<'a>, a: String, b: String) -> PyResult<(String, String)> {
@@ -186,6 +243,7 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         Ok((x.to_string(), y.to_string()))
     }
 
+    // Attempts to replicated the interface of difflib._mdiff
     #[pyfn(m)]
     #[pyo3(name = "mdiff")]
     fn mdiff<'a>(
