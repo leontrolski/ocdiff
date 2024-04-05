@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import difflib
 from pathlib import Path
 import re
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Literal
 import unicodedata
 
 # Exit code constants
@@ -40,7 +40,8 @@ color_mapping = {
     "line-numbers": "white",
 }
 
-Diff = tuple[tuple[str, str] | None, tuple[str, str] | None, str | None]
+LineNum = int | Literal["", ">"]
+Diff = tuple[tuple[LineNum, str], tuple[LineNum, str], bool | None]
 
 
 @dataclass
@@ -90,8 +91,8 @@ def _display_len(s: str) -> int:
 
 def _split_line(
     wrapcolumn: int,
-    data_list: list[tuple[str, str]],
-    line_num: str,
+    data_list: list[tuple[LineNum, str]],
+    line_num: LineNum,
     text: str,
 ) -> None:
     while True:
@@ -150,7 +151,6 @@ def _line_wrapper(wrapcolumn: int, diffs: Iterable[Diff]) -> Iterator[Diff]:
     for fromdata, todata, flag in diffs:
         # check for context separators and pass them through
         if flag is None:
-            yield fromdata, todata, flag
             continue
 
         assert isinstance(fromdata, tuple)
@@ -158,8 +158,8 @@ def _line_wrapper(wrapcolumn: int, diffs: Iterable[Diff]) -> Iterator[Diff]:
         (fromline, fromtext), (toline, totext) = fromdata, todata
         # for each from/to line split it at the wrap column to form
         # list of text lines.
-        fromlist = list[tuple[str, str]]()
-        tolist = list[tuple[str, str]]()
+        fromlist = list[tuple[LineNum, str]]()
+        tolist = list[tuple[LineNum, str]]()
         _split_line(wrapcolumn, fromlist, fromline, fromtext)
         _split_line(wrapcolumn, tolist, toline, totext)
         # yield from/to line in pairs inserting blank lines as
@@ -207,20 +207,18 @@ def _lpad(s: str, field_width: int) -> str:
     return s + _pad(s, field_width)
 
 
-def _format_line(line_numbers: bool, linenum: str, text: str) -> str:
+def _format_line(line_numbers: bool, linenum: LineNum, text: str) -> str:
     text = text.rstrip()
     if not line_numbers:
         return text
     return _add_line_numbers(linenum, text)
 
 
-def _add_line_numbers(linenum: str, text: str) -> str:
-    try:
-        lid = "%d" % linenum  # type: ignore[str-format]
-    except TypeError:
-        # handle blank lines where linenum is '>' or ''
-        lid = ""
+def _add_line_numbers(linenum: LineNum, text: str) -> str:
+    if linenum == "" or linenum == ">":
         return text
+
+    lid = "%d" % linenum
     return "%s %s" % (
         _rpad(simple_colorize(str(lid), "line-numbers"), 8),
         text,
@@ -230,19 +228,15 @@ def _add_line_numbers(linenum: str, text: str) -> str:
 def _collect_lines(
     line_numbers: bool, diffs: Iterable[Diff]
 ) -> Iterator[tuple[str, str] | None]:
-    # pull from/to data and flags from mdiff style iterator
-    for fromdata, todata, flag in diffs:
-        if (fromdata, todata, flag) == (None, None, None):
-            yield None
-        else:
-            assert isinstance(fromdata, tuple)
-            assert isinstance(todata, tuple)
-            fromlinenum, fromtext = fromdata
-            tolinenum, totext = todata
-            yield (
-                _format_line(line_numbers, fromlinenum, fromtext),
-                _format_line(line_numbers, tolinenum, totext),
-            )
+    for fromdata, todata, _ in diffs:
+        assert isinstance(fromdata, tuple)
+        assert isinstance(todata, tuple)
+        fromlinenum, fromtext = fromdata
+        tolinenum, totext = todata
+        yield (
+            _format_line(line_numbers, fromlinenum, fromtext),
+            _format_line(line_numbers, tolinenum, totext),
+        )
 
 
 def _tab_newline_replace(
@@ -267,9 +261,7 @@ def _colorize(s: str) -> str:
     C_ADD = color_codes[color_mapping["add"]]
     C_SUB = color_codes[color_mapping["subtract"]]
     C_CHG = color_codes[color_mapping["change"]]
-
     C_NONE = color_codes["none"]
-    colors = (C_ADD, C_SUB, C_CHG, C_NONE)
 
     s = replace_all(
         {
@@ -328,6 +320,15 @@ def make_table(
         linejunk=None,
         charjunk=difflib.IS_CHARACTER_JUNK,
     )
+
+    # Example output from difflib
+    # ---------------------------
+    # (1, "["),                                   (1, "["),                            False
+    # (2, "    {"),                               (2, "    {"),                        False
+    # (3, '\x00-        "_ts": 1703071209,\x01'), ("", "\n"),                          True
+    # (4, '        "payload": {'),                (3, '        "payload": {'),         False
+    # (5, '            "CommonBlock": {'),        (4, '            "CommonBlock": {'), False
+    # (6, '                "A0": {'),             (5, '                "A0": {'),      False
 
     diffs = _line_wrapper(options.wrapcolumn, diffs)
     diff_lines = _collect_lines(options.line_numbers, diffs)
