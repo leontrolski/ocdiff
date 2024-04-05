@@ -102,6 +102,72 @@ fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     (x, y)
 }
 
+fn _mdiff(
+    a: String,
+    b: String,
+    context_lines: Option<usize>,
+) -> Vec<Diff> {
+    let diff = TextDiff::from_lines(&a, &b);
+    let mut unified = diff.unified_diff();
+    unified.context_radius(context_lines.unwrap_or(1000)); // We default to just a large number
+
+    let mut diffs: Vec<Diff> = Vec::new();
+
+    let mut append: bool = false;
+    for hunk in unified.iter_hunks() {
+        for change in hunk.iter_changes() {
+            let value = String::from(change.value().trim_end_matches('\n'));
+            match change.tag() {
+                ChangeTag::Equal => {
+                    let diff: Diff = (
+                        (change.old_index().unwrap() as i64 + 1, value.clone()),
+                        (change.new_index().unwrap() as i64 + 1, value.clone()),
+                        false,
+                    );
+                    diffs.push(diff);
+                    append = false;
+                }
+                _ => {
+                    if append {
+                        let last = diffs.len() - 1;
+                        if change.old_index().is_some() {
+                            diffs[last].0 .0 = change.old_index().unwrap() as i64 + 1;
+                            diffs[last].0 .1 = value.clone();
+                        } else {
+                            diffs[last].1 .0 = change.new_index().unwrap() as i64 + 1;
+                            diffs[last].1 .1 = value.clone();
+                        }
+                        diffs[last].2 = true;
+                        append = false;
+                    } else {
+                        if change.old_index().is_some() {
+                            let diff: Diff = (
+                                (change.old_index().unwrap() as i64 + 1, value.clone()),
+                                (-1, String::from("\n")),
+                                true,
+                            );
+                            diffs.push(diff);
+                        } else {
+                            let diff: Diff = (
+                                (-1, String::from("\n")),
+                                (change.new_index().unwrap() as i64 + 1, value.clone()),
+                                true,
+                            );
+                            diffs.push(diff);
+                        }
+                        append = true;
+                    }
+                }
+            }
+        }
+    }
+    fn f(diff: &Diff) -> Diff {
+        let (x, y) = _diff_lines(diff.0 .1.clone(), diff.1 .1.clone());
+        ((diff.0 .0, x.to_string()), (diff.1 .0, y.to_string()), diff.2)
+    }
+    diffs.iter().map(f).collect()
+}
+
 #[pymodule]
 #[pyo3(name = "ocdiff")]
 fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -121,66 +187,7 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         b: String,
         context_lines: Option<usize>,
     ) -> PyResult<Vec<Diff>> {
-        let diff = TextDiff::from_lines(&a, &b);
-        let mut unified = diff.unified_diff();
-        unified.context_radius(context_lines.unwrap_or(1000)); // We default to just a large number
-
-        let mut diffs: Vec<Diff> = Vec::new();
-
-        let mut append: bool = false;
-        for hunk in unified.iter_hunks() {
-            for change in hunk.iter_changes() {
-                let value = String::from(change.value().trim_end_matches('\n'));
-                match change.tag() {
-                    ChangeTag::Equal => {
-                        let diff: Diff = (
-                            (change.old_index().unwrap() as i64 + 1, value.clone()),
-                            (change.new_index().unwrap() as i64 + 1, value.clone()),
-                            false,
-                        );
-                        diffs.push(diff);
-                        append = false;
-                    }
-                    _ => {
-                        if append {
-                            let last = diffs.len() - 1;
-                            if change.old_index().is_some() {
-                                diffs[last].0 .0 = change.old_index().unwrap() as i64 + 1;
-                                diffs[last].0 .1 = value.clone();
-                            } else {
-                                diffs[last].1 .0 = change.new_index().unwrap() as i64 + 1;
-                                diffs[last].1 .1 = value.clone();
-                            }
-                            diffs[last].2 = true;
-                            append = false;
-                        } else {
-                            if change.old_index().is_some() {
-                                let diff: Diff = (
-                                    (change.old_index().unwrap() as i64 + 1, value.clone()),
-                                    (-1, String::from("\n")),
-                                    true,
-                                );
-                                diffs.push(diff);
-                            } else {
-                                let diff: Diff = (
-                                    (-1, String::from("\n")),
-                                    (change.new_index().unwrap() as i64 + 1, value.clone()),
-                                    true,
-                                );
-                                diffs.push(diff);
-                            }
-                            append = true;
-                        }
-                    }
-                }
-            }
-        }
-        fn f(diff: &Diff) -> Diff {
-            let (x, y) = _diff_lines(diff.0 .1.clone(), diff.1 .1.clone());
-            ((diff.0 .0, x.to_string()), (diff.1 .0, y.to_string()), diff.2)
-        }
-        let diffs_each: Vec<Diff> = diffs.iter().map(f).collect();
-        Ok(diffs_each)
+        Ok(_mdiff(a, b, context_lines))
     }
 
     Ok(())
