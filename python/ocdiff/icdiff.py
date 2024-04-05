@@ -5,6 +5,8 @@ import re
 from typing import Iterable, Iterator, Literal
 import unicodedata
 
+import ocdiff
+
 # Exit code constants
 EXIT_CODE_SUCCESS = 0
 EXIT_CODE_DIFF = 1
@@ -313,12 +315,17 @@ def make_table(
 
     fromlines, tolines = _tab_newline_replace(options.tabsize, fromlines, tolines)
 
-    diffs: Iterator[Diff] = difflib._mdiff(  # type: ignore[attr-defined]
-        fromlines,
-        tolines,
-        context_lines,
-        linejunk=None,
-        charjunk=difflib.IS_CHARACTER_JUNK,
+    diffs: Iterator[Diff] = (
+        (
+            ("" if fromlinenum == -1 else fromlinenum, fromtext),
+            ("" if tolinenum == -1 else tolinenum, totext),
+            flag,
+        )
+        for ((fromlinenum, fromtext), (tolinenum, totext), flag) in ocdiff.mdiff(
+            "\n".join(fromlines),
+            "\n".join(tolines),
+            context_lines,
+        )
     )
 
     # Example output from difflib
@@ -363,6 +370,6 @@ def diff_files(options: Options, a: Path, b: Path) -> None:
 if __name__ == "__main__":
     diff_files(
         Options(),
-        Path.home() / "a",
-        Path.home() / "b",
+        Path(__file__).parents[2] / "tests" / "a.json",
+        Path(__file__).parents[2] / "tests" / "b.json",
     )
