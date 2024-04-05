@@ -9,30 +9,92 @@ use similar::{ChangeTag, TextDiff};
 type LineNum = i64;
 type Diff = ((LineNum, String), (LineNum, String), bool);
 
-fn _diff_lines(a: String, b: String) -> (String, String) {
+struct LineDiff {
+    left_lineno: i64,
+    left: PartsDiff,
+    right_lineno: i64,
+    right: PartsDiff
+}
+
+#[derive(Clone)]
+enum Part {
+    Equal(String),
+    Delete(String),
+    Insert(String),
+}
+struct PartsDiff {
+    parts: Vec<Part>,
+}
+impl PartsDiff {
+    fn push_equal(&mut self, value: &str) {
+        match &mut self.parts.last_mut() {
+            Some(Part::Equal(s)) => {
+                s.push_str(value);
+            }
+            _ => {
+                let part = Part::Equal(String::from(value));
+                self.parts.push(part)
+            }
+        }
+    }
+    fn push_delete(&mut self, value: &str) {
+        match &mut self.parts.last_mut() {
+            Some(Part::Delete(s)) => {
+                s.push_str(value);
+            }
+            _ => {
+                let part = Part::Delete(String::from(value));
+                self.parts.push(part)
+            }
+        }
+    }
+    fn push_insert(&mut self, value: &str) {
+        match &mut self.parts.last_mut() {
+            Some(Part::Insert(s)) => {
+                s.push_str(value);
+            }
+            _ => {
+                let part = Part::Insert(String::from(value));
+                self.parts.push(part)
+            }
+        }
+    }
+    fn to_string(&self) -> String {
+        let mut line_string = String::from("");
+        for part in &self.parts {
+            match part {
+                Part::Equal(s) => line_string.push_str(s.as_str()),
+                Part::Delete(s) => line_string.push_str(format!("\x00-{}\x01", s).as_str()),
+                Part::Insert(s) => line_string.push_str(format!("\x00^{}\x01", s).as_str()),
+            }
+        }
+        line_string
+    }
+}
+
+fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     let diff = TextDiff::from_chars(&a, &b);
-    let mut x = String::from("");
-    let mut y = String::from("");
+    let mut x = PartsDiff { parts: Vec::new() };
+    let mut y = PartsDiff { parts: Vec::new() };
     for change in diff.iter_all_changes() {
+        let value = change.value();
         match change.tag() {
             ChangeTag::Equal => {
-                x.push_str(change.value());
-                y.push_str(change.value());
+                x.push_equal(value);
+                y.push_equal(value);
             }
             ChangeTag::Delete => {
-                let value = format!("\x00-{}\x01", change.value());
                 if change.old_index().is_some() {
-                    x.push_str(value.as_str());
+                    x.push_delete(value);
                 } else {
-                    y.push_str(value.as_str())
+                    y.push_delete(value)
                 }
             }
             ChangeTag::Insert => {
-                let value = format!("\x00^{}\x01", change.value());
                 if change.old_index().is_some() {
-                    x.push_str(value.as_str());
+                    x.push_insert(value);
                 } else {
-                    y.push_str(value.as_str())
+                    y.push_insert(value)
                 }
             }
         }
@@ -47,7 +109,8 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
     #[pyfn(m)]
     #[pyo3(name = "diff_lines")]
     fn diff_lines<'a>(_py: Python<'a>, a: String, b: String) -> PyResult<(String, String)> {
-        Ok(_diff_lines(a, b))
+        let (x, y) = _diff_lines(a, b);
+        Ok((x.to_string(), y.to_string()))
     }
 
     #[pyfn(m)]
@@ -114,7 +177,7 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         }
         fn f(diff: &Diff) -> Diff {
             let (x, y) = _diff_lines(diff.0 .1.clone(), diff.1 .1.clone());
-            ((diff.0 .0, x), (diff.1 .0, y), diff.2)
+            ((diff.0 .0, x.to_string()), (diff.1 .0, y.to_string()), diff.2)
         }
         let diffs_each: Vec<Diff> = diffs.iter().map(f).collect();
         Ok(diffs_each)
