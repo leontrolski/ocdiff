@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '**'
+  pull_request: {}
+
+jobs:
+  build:
+    name: build py${{ matrix.python-version }} on ${{ matrix.platform || matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos
+        python-version:
+          - '3.11'
+        include:
+          - os: ubuntu
+            platform: linux
+          - os: windows
+            ls: dir
+          - python-version: 3.11
+            cibw-version: cp311
+
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: set up python
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: set up rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.74.0
+          profile: minimal
+          default: true
+          override: true
+
+      - name: install python dependencies
+        run: |
+          pip install -U build
+
+      - name: build ${{ matrix.platform || matrix.os }} binaries
+        run: python -m build
+        env:
+          CIBW_BUILD: '${{ matrix.cibw-version }}-*'
+          CIBW_SKIP: '*-win32'
+          CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}
+          CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
+          CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
+          CIBW_BEFORE_BUILD: >
+            rustup show
+          CIBW_BEFORE_BUILD_LINUX: >
+            curl https://sh.rustup.rs -sSf | sh -s -- --profile=minimal -y &&
+            rustup show
+          CIBW_TEST_COMMAND: "pytest {project}/tests"
+          CIBW_TEST_EXTRAS: test
+
+      - name: Upload to github releases
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/*.whl
+          file_glob: true
+          tag: ${{ github.ref }}
+
+      # - name: upload to pypi
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   run: twine upload ${{ matrix.wheels-dir }}/*
+      #   env:
+      #     TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}

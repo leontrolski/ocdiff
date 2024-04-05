@@ -1,0 +1,27 @@
+[package]
+authors = ["Oliver Russell <ojhrussell@gmail.com>"]
+name = "ocdiff"
+version = "0.0.1"
+
+[dependencies]
+pyo3 = { version = "0.20.0" }
+
+
+[lib]
+name = "ocdiff"
+crate-type = ["cdylib"]
+
+[features]
+default = ["pyo3/extension-module"]
+
+[profile.dev]
+# opt-level = 0
+# debug = 2
+# split-debuginfo = "unpacked"
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+
+[profile.test]
+opt-level = 3
