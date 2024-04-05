@@ -6,16 +6,20 @@ use pyo3::prelude::*;
 // use pyo3::types::*;
 use similar::{ChangeTag, TextDiff};
 
-type LineNum = i64;
-type Diff = ((LineNum, String), (LineNum, String), bool);
+type Diff = ((i64, String), (i64, String), bool);
 
 struct LineDiff {
     left_lineno: i64,
+    left: String,
+    right_lineno: i64,
+    right: String,
+}
+struct LinePartsDiff {
+    left_lineno: i64,
     left: PartsDiff,
     right_lineno: i64,
-    right: PartsDiff
+    right: PartsDiff,
 }
-
 #[derive(Clone)]
 enum Part {
     Equal(String),
@@ -102,16 +106,12 @@ fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     (x, y)
 }
 
-fn _mdiff(
-    a: String,
-    b: String,
-    context_lines: Option<usize>,
-) -> Vec<Diff> {
+fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDiff> {
     let diff = TextDiff::from_lines(&a, &b);
     let mut unified = diff.unified_diff();
     unified.context_radius(context_lines.unwrap_or(1000)); // We default to just a large number
 
-    let mut diffs: Vec<Diff> = Vec::new();
+    let mut diffs: Vec<LineDiff> = Vec::new();
 
     let mut append: bool = false;
     for hunk in unified.iter_hunks() {
@@ -119,11 +119,12 @@ fn _mdiff(
             let value = String::from(change.value().trim_end_matches('\n'));
             match change.tag() {
                 ChangeTag::Equal => {
-                    let diff: Diff = (
-                        (change.old_index().unwrap() as i64 + 1, value.clone()),
-                        (change.new_index().unwrap() as i64 + 1, value.clone()),
-                        false,
-                    );
+                    let diff = LineDiff {
+                        left_lineno: change.old_index().unwrap() as i64 + 1,
+                        left: value.clone(),
+                        right_lineno: change.new_index().unwrap() as i64 + 1,
+                        right: value.clone(),
+                    };
                     diffs.push(diff);
                     append = false;
                 }
@@ -131,28 +132,29 @@ fn _mdiff(
                     if append {
                         let last = diffs.len() - 1;
                         if change.old_index().is_some() {
-                            diffs[last].0 .0 = change.old_index().unwrap() as i64 + 1;
-                            diffs[last].0 .1 = value.clone();
+                            diffs[last].left_lineno = change.old_index().unwrap() as i64 + 1;
+                            diffs[last].left = value.clone();
                         } else {
-                            diffs[last].1 .0 = change.new_index().unwrap() as i64 + 1;
-                            diffs[last].1 .1 = value.clone();
+                            diffs[last].right_lineno = change.new_index().unwrap() as i64 + 1;
+                            diffs[last].right = value.clone();
                         }
-                        diffs[last].2 = true;
                         append = false;
                     } else {
                         if change.old_index().is_some() {
-                            let diff: Diff = (
-                                (change.old_index().unwrap() as i64 + 1, value.clone()),
-                                (-1, String::from("\n")),
-                                true,
-                            );
+                            let diff = LineDiff {
+                                left_lineno: change.old_index().unwrap() as i64 + 1,
+                                left: value.clone(),
+                                right_lineno: -1,
+                                right: String::from("\n"),
+                            };
                             diffs.push(diff);
                         } else {
-                            let diff: Diff = (
-                                (-1, String::from("\n")),
-                                (change.new_index().unwrap() as i64 + 1, value.clone()),
-                                true,
-                            );
+                            let diff = LineDiff {
+                                left_lineno: -1,
+                                left: String::from("\n"),
+                                right_lineno: change.new_index().unwrap() as i64 + 1,
+                                right: value.clone(),
+                            };
                             diffs.push(diff);
                         }
                         append = true;
@@ -161,9 +163,14 @@ fn _mdiff(
             }
         }
     }
-    fn f(diff: &Diff) -> Diff {
-        let (x, y) = _diff_lines(diff.0 .1.clone(), diff.1 .1.clone());
-        ((diff.0 .0, x.to_string()), (diff.1 .0, y.to_string()), diff.2)
+    fn f(diff: &LineDiff) -> LinePartsDiff {
+        let (x, y) = _diff_lines(diff.left.clone(), diff.right.clone());
+        LinePartsDiff {
+            left_lineno: diff.left_lineno,
+            left: x,
+            right_lineno: diff.right_lineno,
+            right: y,
+        }
     }
     diffs.iter().map(f).collect()
 }
@@ -187,7 +194,18 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         b: String,
         context_lines: Option<usize>,
     ) -> PyResult<Vec<Diff>> {
-        Ok(_mdiff(a, b, context_lines))
+        let line_parts_diffs = _mdiff(a, b, context_lines);
+        let difflib_compatible = line_parts_diffs
+            .iter()
+            .map(|diff| {
+                (
+                    (diff.left_lineno, diff.left.to_string()),
+                    (diff.right_lineno, diff.right.to_string()),
+                    true,
+                )
+            })
+            .collect();
+        Ok(difflib_compatible)
     }
 
     Ok(())
