@@ -1,0 +1,36 @@
+{
+    "additional_information": null,
+    "address": {
+        "address_line_1": "FIRST",
+        "address_line_2": "SECOND",
+        "address_line_3": "THIRD",
+        "address_line_4": "FOURTH",
+        "address_line_5": "FIFTH",
+        "address_line_6": "SIXTH",
+        "address_line_7": "SEVENTH",
+        "address_line_8": "EIGHTH",
+        "address_line_9": "NINTH",
+        "postcode": "ABC 123"
+    },
+    "asset_condition_reports": [],
+    "cdcs": [],
+    "comms_hub": null,
+    "complex_site_indicator": null,
+    "consent_granularity": null,
+    "consent_granularity_effective_from_date": null,
+    "contact_name": "Contact Name 2",
+    "contact_telephone_number": "+440000000000",
+    "css_registration_request_id": null,
+    "customer_appointments": [],
+    "dc_history": [
+        {
+            "active_period": {
+                "boundaries": "[]",
+                "end": "9999-12-30",
+                "start": "2022-04-19"
+            },
+            "dc_mpid": "UDMS",
+            "void": false
+        }
+    ]
+}

@@ -2,6 +2,22 @@
 
 Fast diff library for Python - wraps [similar](https://crates.io/crates/similar).
 
+# Usage
+
+```shell
+pip install ocdiff
+```
+
+```python
+ocdiff.html_diff(
+    a,
+    b,
+    context_lines=5,
+    # This isn't respected yet
+    column_limit=80,
+)
+```
+
 # Install/Develop
 
 ```shell

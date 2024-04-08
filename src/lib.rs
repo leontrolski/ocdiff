@@ -124,10 +124,10 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
 
     let mut diffs: Vec<LineDiff> = Vec::new();
 
-    let mut append: bool = false;
     for hunk in unified.iter_hunks() {
         for change in hunk.iter_changes() {
             let value = String::from(change.value().trim_end_matches('\n'));
+
             match change.tag() {
                 ChangeTag::Equal => {
                     let diff = LineDiff {
@@ -137,38 +137,48 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                         right: value.clone(),
                     };
                     diffs.push(diff);
-                    append = false;
                 }
                 _ => {
-                    if append {
-                        let last = diffs.len() - 1;
-                        if change.old_index().is_some() {
-                            diffs[last].left_lineno = change.old_index().unwrap() as i64 + 1;
-                            diffs[last].left = value.clone();
-                        } else {
-                            diffs[last].right_lineno = change.new_index().unwrap() as i64 + 1;
-                            diffs[last].right = value.clone();
-                        }
-                        append = false;
+                    let is_left = change.old_index().is_some();
+                    let lineno: i64;
+                    if is_left {
+                        lineno = change.old_index().unwrap() as i64 + 1;
+                        assert!(change.new_index().is_none())
                     } else {
-                        if change.old_index().is_some() {
+                        lineno = change.new_index().unwrap() as i64 + 1;
+                    }
+                    let previous = diffs.last();
+                    let previous_left_empty = previous.is_some() && previous.unwrap().left == "";
+                    let previous_right_empty = previous.is_some() && previous.unwrap().right == "";
+
+                    if is_left {
+                        if previous_left_empty {
+                            let i = diffs.len() - 1;
+                            diffs[i].left_lineno = lineno;
+                            diffs[i].left = value.clone();
+                        } else {
                             let diff = LineDiff {
-                                left_lineno: change.old_index().unwrap() as i64 + 1,
+                                left_lineno: lineno,
                                 left: value.clone(),
                                 right_lineno: -1,
                                 right: String::from(""),
                             };
                             diffs.push(diff);
+                        }
+                    } else {
+                        if previous_right_empty {
+                            let i = diffs.len() - 1;
+                            diffs[i].right_lineno = lineno;
+                            diffs[i].right = value.clone();
                         } else {
                             let diff = LineDiff {
                                 left_lineno: -1,
                                 left: String::from(""),
-                                right_lineno: change.new_index().unwrap() as i64 + 1,
+                                right_lineno: lineno,
                                 right: value.clone(),
                             };
                             diffs.push(diff);
                         }
-                        append = true;
                     }
                 }
             }
@@ -192,10 +202,12 @@ fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
     let mut right = String::new();
     html.push_str("<div>");
     html.push_str("<style>");
-    html.push_str(".ocdiff-container { display: flex; background-color: #141414; color: white; }");
-    html.push_str(".ocdiff-side { width: 50%; overflow-x: scroll; margin: 0; padding: 1rem; }");
-    html.push_str(".ocdiff-delete { font-weight: bolder; color: red; }");
-    html.push_str(".ocdiff-insert { font-weight: bolder; color: green; }");
+    html.push_str(
+        ".ocdiff-container { display: flex; background-color: #141414; color: #8a8a8a; }",
+    );
+    html.push_str(".ocdiff-side { width: 50%; overflow-x: auto; margin: 0; padding: 1rem; }");
+    html.push_str(".ocdiff-delete { color: red; }");
+    html.push_str(".ocdiff-insert { color: green; }");
     html.push_str("</style>");
     html.push_str("<div class=\"ocdiff-container\">");
 

@@ -1,6 +1,6 @@
 [project]
 name = "ocdiff"
-version = "0.0.12"
+version = "0.0.13"
 description = "difftastic Python wrapper"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,7 +17,7 @@ dev = [
     "maturin==1.4.0",
     "pytest==7.*",
     "mypy==1.6.*",
-    "pip==24.0"
+    "pip==24.0",
 ]
 test = [
     "pytest==7.*",
