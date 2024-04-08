@@ -72,9 +72,9 @@ jobs:
           file_glob: true
           tag: ${{ github.ref }}
 
-      # - name: upload to pypi
-      #   if: startsWith(github.ref, 'refs/tags/')
-      #   run: twine upload ${{ matrix.wheels-dir }}/*
-      #   env:
-      #     TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-      #     TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      - name: upload to pypi
+        if: startsWith(github.ref, 'refs/tags/')
+        run: twine upload ${{ matrix.wheels-dir }}/*
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
