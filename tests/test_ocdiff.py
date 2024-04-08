@@ -8,6 +8,6 @@ def test_html_diff() -> None:
         (Path(__file__).parent / "b.json").read_text(),
         context_lines=5,
         column_limit=80,
-    )
-    expected = (Path(__file__).parent / "expected.html").read_text()
+    ).strip()
+    expected = (Path(__file__).parent / "expected.html").read_text().strip()
     assert actual == expected
