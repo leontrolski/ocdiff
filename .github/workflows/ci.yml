@@ -63,14 +63,14 @@ jobs:
           CIBW_TEST_COMMAND: "pytest {project}/tests"
           CIBW_TEST_EXTRAS: test
 
-      - name: Upload to github releases
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/*.whl
-          file_glob: true
-          tag: ${{ github.ref }}
+      # - name: Upload to github releases
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   uses: svenstaro/upload-release-action@v2
+      #   with:
+      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
+      #     file: dist/*.whl
+      #     file_glob: true
+      #     tag: ${{ github.ref }}
 
       - name: upload to pypi
         if: startsWith(github.ref, 'refs/tags/')
