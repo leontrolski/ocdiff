@@ -24,3 +24,4 @@ git push origin v0.0.x
 - Implement `column_limit` - should just be a function of `Vec<LinePartsDiff>` to `Vec<LinePartsDiff>`.
 - Add console output with colours.
 - Add pytest plugin magic that plays with `rich`.
+- Write some docs.
