@@ -45,6 +45,7 @@ jobs:
 
       - name: install python dependencies
         run: |
+          pip install twine
           pip install -U build
 
       - name: build ${{ matrix.platform || matrix.os }} binaries
