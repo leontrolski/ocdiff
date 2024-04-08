@@ -1,6 +1,6 @@
 [project]
 name = "ocdiff"
-version = "0.0.13"
+version = "0.0.14"
 description = "difftastic Python wrapper"
 readme = "README.md"
 requires-python = ">=3.11"

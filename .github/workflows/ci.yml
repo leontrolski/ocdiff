@@ -16,7 +16,8 @@ jobs:
       matrix:
         os:
           - ubuntu
-          - macos
+          - macos-13
+          - macos-macos-14
           # - windows
         python-version:
           - '3.11'
