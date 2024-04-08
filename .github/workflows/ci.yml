@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu
+          - ubuntu-22.04
           - macos-13
           - macos-macos-14
           # - windows
@@ -29,7 +29,7 @@ jobs:
           - python-version: 3.11
             cibw-version: cp311
 
-    runs-on: ${{ format('{0}-latest', matrix.os) }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
 
