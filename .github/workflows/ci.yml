@@ -17,13 +17,17 @@ jobs:
         os:
           - ubuntu-22.04
           - macos-13
-          - macos-macos-14
+          - macos-14
           # - windows
         python-version:
           - '3.11'
         include:
-          - os: ubuntu
+          - os: ubuntu-22.04
             platform: linux
+          - os: macos-13
+            platform: macos
+          - os: macos-14
+            platform: macos
           # - os: windows
           #   ls: dir
           - python-version: 3.11
