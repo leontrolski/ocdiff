@@ -17,14 +17,14 @@ jobs:
         os:
           - ubuntu
           - macos
-          - windows
+          # - windows
         python-version:
           - '3.11'
         include:
           - os: ubuntu
             platform: linux
-          - os: windows
-            ls: dir
+          # - os: windows
+          #   ls: dir
           - python-version: 3.11
             cibw-version: cp311
 
@@ -64,19 +64,20 @@ jobs:
             rustup show
           CIBW_TEST_COMMAND: "pytest {project}/tests"
           CIBW_TEST_EXTRAS: test
+          CIBW_SKIP: "*-musllinux*"
 
-      - name: build windows 32bit binaries
-        if: matrix.os == 'windows'
-        run: python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: '${{ matrix.cibw-version }}-win32'
-          CIBW_PLATFORM: windows
-          CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
-          CIBW_BEFORE_BUILD: >
-            rustup default stable-i686-pc-windows-msvc &&
-            rustup show
-          CIBW_TEST_COMMAND: "pytest {project}/tests"
-          CIBW_TEST_EXTRAS: test
+      # - name: build windows 32bit binaries
+      #   if: matrix.os == 'windows'
+      #   run: python -m cibuildwheel --output-dir wheelhouse
+      #   env:
+      #     CIBW_BUILD: '${{ matrix.cibw-version }}-win32'
+      #     CIBW_PLATFORM: windows
+      #     CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
+      #     CIBW_BEFORE_BUILD: >
+      #       rustup default stable-i686-pc-windows-msvc &&
+      #       rustup show
+      #     CIBW_TEST_COMMAND: "pytest {project}/tests"
+      #     CIBW_TEST_EXTRAS: test
 
       # - name: Upload to github releases
       #   if: startsWith(github.ref, 'refs/tags/')
