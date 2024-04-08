@@ -228,18 +228,26 @@ fn generate_html_parts(parts: &Vec<Part>) -> String {
         match part {
             Part::Equal(text) => {
                 let escaped_text = encode_text(text);
-                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-equal\">{}</span>", escaped_text));
+                html.push_str(&format!(
+                    "<span class=\"ocdiff-line ocdiff-equal\">{}</span>",
+                    escaped_text
+                ));
             }
             Part::Delete(text) => {
                 let escaped_text = encode_text(text);
-                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-delete\">{}</span>", escaped_text));
+                html.push_str(&format!(
+                    "<span class=\"ocdiff-line ocdiff-delete\">{}</span>",
+                    escaped_text
+                ));
             }
             Part::Insert(text) => {
                 let escaped_text = encode_text(text);
-                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-insert\">{}</span>", escaped_text));
+                html.push_str(&format!(
+                    "<span class=\"ocdiff-line ocdiff-insert\">{}</span>",
+                    escaped_text
+                ));
             }
         }
-
     }
     html
 }

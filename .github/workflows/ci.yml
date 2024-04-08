@@ -75,7 +75,7 @@ jobs:
 
       - name: upload to pypi
         if: startsWith(github.ref, 'refs/tags/')
-        run: twine upload ${{ matrix.wheels-dir }}/*
+        run: twine upload dist/*
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
