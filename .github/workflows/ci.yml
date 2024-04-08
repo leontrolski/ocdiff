@@ -53,7 +53,7 @@ jobs:
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: '${{ matrix.cibw-version }}-*'
-          CIBW_SKIP: '*-win32'
+          CIBW_SKIP: '*-win32 *-musllinux*'
           CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
           CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
@@ -64,7 +64,6 @@ jobs:
             rustup show
           CIBW_TEST_COMMAND: "pytest {project}/tests"
           CIBW_TEST_EXTRAS: test
-          CIBW_SKIP: "*-musllinux*"
 
       # - name: build windows 32bit binaries
       #   if: matrix.os == 'windows'
