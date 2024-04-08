@@ -47,10 +47,10 @@ jobs:
 
       - name: install python dependencies
         run: |
-          pip install build twine
+          pip install cibuildwheel==2.17.0 twine
 
       - name: build ${{ matrix.platform || matrix.os }} binaries
-        run: python -m build
+        run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: '${{ matrix.cibw-version }}-*'
           CIBW_SKIP: '*-win32'
@@ -67,7 +67,7 @@ jobs:
 
       - name: build windows 32bit binaries
         if: matrix.os == 'windows'
-        run: python -m build
+        run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: '${{ matrix.cibw-version }}-win32'
           CIBW_PLATFORM: windows
@@ -89,7 +89,7 @@ jobs:
 
       - name: upload to pypi
         if: startsWith(github.ref, 'refs/tags/')
-        run: twine upload dist/*
+        run: twine upload wheelhouse/*.whl
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
