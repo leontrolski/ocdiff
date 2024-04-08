@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
+          - ubuntu
           - macos
-          - linux
           - windows
         python-version:
           - '3.11'
