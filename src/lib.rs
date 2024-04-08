@@ -1,25 +1,13 @@
+extern crate html_escape;
 extern crate pyo3;
 extern crate similar;
+extern crate unicode_width;
 
-// use pyo3::exceptions::*;
+use html_escape::encode_text;
 use pyo3::prelude::*;
-// use pyo3::types::*;
 use similar::{ChangeTag, TextDiff};
+use unicode_width::UnicodeWidthStr;
 
-type Diff = ((i64, String), (i64, String), bool);
-
-struct LineDiff {
-    left_lineno: i64,
-    left: String,
-    right_lineno: i64,
-    right: String,
-}
-struct LinePartsDiff {
-    left_lineno: i64,
-    left: PartsDiff,
-    right_lineno: i64,
-    right: PartsDiff,
-}
 #[derive(Clone)]
 enum Part {
     Equal(String),
@@ -28,6 +16,18 @@ enum Part {
 }
 struct PartsDiff {
     parts: Vec<Part>,
+}
+struct LinePartsDiff {
+    left_lineno: i64,
+    left: PartsDiff,
+    right_lineno: i64,
+    right: PartsDiff,
+}
+struct LineDiff {
+    left_lineno: i64,
+    left: String,
+    right_lineno: i64,
+    right: String,
 }
 impl PartsDiff {
     fn push_equal(&mut self, value: &str) {
@@ -63,16 +63,16 @@ impl PartsDiff {
             }
         }
     }
-    fn to_string(&self) -> String {
-        let mut line_string = String::from("");
+    fn width(&self) -> usize {
+        let mut width: usize = 0;
         for part in &self.parts {
             match part {
-                Part::Equal(s) => line_string.push_str(s.as_str()),
-                Part::Delete(s) => line_string.push_str(format!("\x00-{}\x01", s).as_str()),
-                Part::Insert(s) => line_string.push_str(format!("\x00^{}\x01", s).as_str()),
+                Part::Equal(s) => width += UnicodeWidthStr::width(s.as_str()),
+                Part::Delete(s) => width += UnicodeWidthStr::width(s.as_str()),
+                Part::Insert(s) => width += UnicodeWidthStr::width(s.as_str()),
             }
         }
-        line_string
+        width
     }
 }
 #[pyclass(name = "Part", get_all)]
@@ -87,51 +87,7 @@ impl PartialEq for PyPart {
     }
 }
 
-#[pymethods]
-impl PyPart {
-    #[new]
-    fn new(value: String, kind: String) -> Self {
-        PyPart { value, kind }
-    }
-    fn __eq__(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-#[pyclass(name = "Diff", get_all)]
-#[derive(Clone)]
-struct PyLinePartsDiff {
-    left_lineno: i64,
-    left: Vec<PyPart>,
-    right_lineno: i64,
-    right: Vec<PyPart>,
-}
-#[pymethods]
-impl PyLinePartsDiff {
-    #[new]
-    fn new<'a>(
-        _py: Python<'a>,
-        left_lineno: i64,
-        left: Vec<Py<PyPart>>,
-        right_lineno: i64,
-        right: Vec<Py<PyPart>>,
-    ) -> PyResult<Self> {
-        Ok(PyLinePartsDiff {
-            left_lineno,
-            left: left.iter().map(|p| p.extract(_py).unwrap()).collect(),
-            right_lineno,
-            right: right.iter().map(|p| p.extract(_py).unwrap()).collect(),
-        })
-    }
-    fn __eq__(&self, other: &Self) -> bool {
-        self.left_lineno == other.left_lineno
-            && self.left == other.left
-            && self.right_lineno == other.right_lineno
-            && self.right == other.right
-    }
-}
-
-fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
+fn diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     let diff = TextDiff::from_chars(&a, &b);
     let mut x = PartsDiff { parts: Vec::new() };
     let mut y = PartsDiff { parts: Vec::new() };
@@ -161,7 +117,7 @@ fn _diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     (x, y)
 }
 
-fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDiff> {
+fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDiff> {
     let diff = TextDiff::from_lines(&a, &b);
     let mut unified = diff.unified_diff();
     unified.context_radius(context_lines.unwrap_or(1000)); // We default to just a large number
@@ -200,13 +156,13 @@ fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDi
                                 left_lineno: change.old_index().unwrap() as i64 + 1,
                                 left: value.clone(),
                                 right_lineno: -1,
-                                right: String::from("\n"),
+                                right: String::from(""),
                             };
                             diffs.push(diff);
                         } else {
                             let diff = LineDiff {
                                 left_lineno: -1,
-                                left: String::from("\n"),
+                                left: String::from(""),
                                 right_lineno: change.new_index().unwrap() as i64 + 1,
                                 right: value.clone(),
                             };
@@ -219,7 +175,7 @@ fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDi
         }
     }
     fn f(diff: &LineDiff) -> LinePartsDiff {
-        let (x, y) = _diff_lines(diff.left.clone(), diff.right.clone());
+        let (x, y) = diff_lines(diff.left.clone(), diff.right.clone());
         LinePartsDiff {
             left_lineno: diff.left_lineno,
             left: x,
@@ -230,40 +186,79 @@ fn _mdiff(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDi
     diffs.iter().map(f).collect()
 }
 
+fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
+    let mut html = String::new();
+    let mut left = String::new();
+    let mut right = String::new();
+    html.push_str("<div>");
+    html.push_str("<style>");
+    html.push_str(".ocdiff-container { display: flex; background-color: #141414; color: white; }");
+    html.push_str(".ocdiff-side { width: 50%; overflow-x: scroll; margin: 0; padding: 1rem; }");
+    html.push_str(".ocdiff-delete { font-weight: bolder; color: red; }");
+    html.push_str(".ocdiff-insert { font-weight: bolder; color: green; }");
+    html.push_str("</style>");
+    html.push_str("<div class=\"ocdiff-container\">");
+
+    for line_diff in diff {
+        let _max_width = line_diff.left.width().max(line_diff.right.width());
+        let _number_of_lines = (_max_width + (column_limit - 1)) / column_limit;
+
+        left.push_str(generate_html_parts(&line_diff.left.parts).as_str());
+        left.push_str("\n");
+        right.push_str(generate_html_parts(&line_diff.right.parts).as_str());
+        right.push_str("\n");
+    }
+
+    html.push_str("<pre class=\"ocdiff-side\">");
+    html.push_str(left.as_str());
+    html.push_str("</pre>");
+    html.push_str("<pre class=\"ocdiff-side\">");
+    html.push_str(right.as_str());
+    html.push_str("</pre>");
+
+    html.push_str("</div>");
+    html.push_str("</div>");
+    html
+}
+
+fn generate_html_parts(parts: &Vec<Part>) -> String {
+    let mut html = String::new();
+
+    for part in parts {
+        match part {
+            Part::Equal(text) => {
+                let escaped_text = encode_text(text);
+                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-equal\">{}</span>", escaped_text));
+            }
+            Part::Delete(text) => {
+                let escaped_text = encode_text(text);
+                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-delete\">{}</span>", escaped_text));
+            }
+            Part::Insert(text) => {
+                let escaped_text = encode_text(text);
+                html.push_str(&format!("<span class=\"ocdiff-line ocdiff-insert\">{}</span>", escaped_text));
+            }
+        }
+
+    }
+    html
+}
+
 #[pymodule]
 #[pyo3(name = "ocdiff")]
 fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<PyPart>()?;
-    m.add_class::<PyLinePartsDiff>()?;
-
     #[pyfn(m)]
-    #[pyo3(name = "diff_lines")]
-    fn diff_lines<'a>(_py: Python<'a>, a: String, b: String) -> PyResult<(String, String)> {
-        let (x, y) = _diff_lines(a, b);
-        Ok((x.to_string(), y.to_string()))
-    }
-
-    // Attempts to replicated the interface of difflib._mdiff
-    #[pyfn(m)]
-    #[pyo3(name = "mdiff")]
-    fn mdiff<'a>(
+    #[pyo3(name = "html_diff")]
+    fn html_diff<'a>(
         _py: Python<'a>,
         a: String,
         b: String,
         context_lines: Option<usize>,
-    ) -> PyResult<Vec<Diff>> {
-        let line_parts_diffs = _mdiff(a, b, context_lines);
-        let difflib_compatible = line_parts_diffs
-            .iter()
-            .map(|diff| {
-                (
-                    (diff.left_lineno, diff.left.to_string()),
-                    (diff.right_lineno, diff.right.to_string()),
-                    true,
-                )
-            })
-            .collect();
-        Ok(difflib_compatible)
+        column_limit: Option<usize>,
+    ) -> PyResult<String> {
+        let line_parts_diffs = diff_a_and_b(a, b, context_lines);
+        let html = generate_html(line_parts_diffs, column_limit.unwrap_or(80));
+        Ok(html)
     }
 
     Ok(())
