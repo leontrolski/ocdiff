@@ -41,7 +41,7 @@ def test_html_diff_3() -> None:
     expected = """
 <div><style>.ocdiff-container { display: flex; background-color: #141414; color: #acacac; }.ocdiff-side { width: 50%; overflow-x: auto; margin: 0; padding: 1rem; }.ocdiff-delete { color: red; }.ocdiff-insert { color: green; }</style><div class="ocdiff-container"><pre class="ocdiff-side"><span class="ocdiff-line ocdiff-equal">48</span>
 <span class="ocdiff-line ocdiff-equal">49</span>
-
+<span class="ocdiff-line ocdiff-none"></span>
 <span class="ocdiff-line ocdiff-equal">50</span>
 <span class="ocdiff-line ocdiff-equal">51</span>
 </pre><pre class="ocdiff-side"><span class="ocdiff-line ocdiff-equal">48</span>

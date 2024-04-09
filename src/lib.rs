@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate html_escape;
 extern crate levenshtein;
 extern crate pyo3;
@@ -21,15 +23,15 @@ struct PartsDiff {
 }
 struct LinePartsDiff {
     left_lineno: i64,
-    left: PartsDiff,
+    left: Option<PartsDiff>,
     right_lineno: i64,
-    right: PartsDiff,
+    right: Option<PartsDiff>,
 }
 struct LineDiff {
     left_lineno: i64,
-    left: String,
+    left: Option<String>, // where None is no string
     right_lineno: i64,
-    right: String,
+    right: Option<String>, // where None is no string
 }
 impl PartsDiff {
     fn push_equal(&mut self, value: &str) {
@@ -77,19 +79,8 @@ impl PartsDiff {
         width
     }
 }
-#[pyclass(name = "Part", get_all)]
-#[derive(Clone)]
-struct PyPart {
-    value: String,
-    kind: String, // EQUAL|DELETE|INSERT
-}
-impl PartialEq for PyPart {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value && self.kind == other.kind
-    }
-}
 
-fn diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
+fn diff_lines(a: String, b: String) -> (Option<PartsDiff>, Option<PartsDiff>) {
     let diff = TextDiff::from_chars(&a, &b);
     let mut x = PartsDiff { parts: Vec::new() };
     let mut y = PartsDiff { parts: Vec::new() };
@@ -116,7 +107,30 @@ fn diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
             }
         }
     }
-    (x, y)
+    (Some(x), Some(y))
+}
+fn convert_diff(diff: &LineDiff) -> LinePartsDiff {
+    let x: Option<PartsDiff>;
+    let y: Option<PartsDiff>;
+    if diff.left.is_none() {
+        x = None;
+        y = Some(PartsDiff {
+            parts: vec![Part::Insert(diff.right.clone().unwrap())],
+        });
+    } else if diff.right.is_none() {
+        x = Some(PartsDiff {
+            parts: vec![Part::Delete(diff.left.clone().unwrap())],
+        });
+        y = None;
+    } else {
+        (x, y) = diff_lines(diff.left.clone().unwrap(), diff.right.clone().unwrap());
+    }
+    LinePartsDiff {
+        left_lineno: diff.left_lineno,
+        left: x,
+        right_lineno: diff.right_lineno,
+        right: y,
+    }
 }
 
 fn similar(a: &String, b: &String) -> bool {
@@ -131,22 +145,22 @@ enum LeftOrRight {
 }
 fn find_hole(diffs: &Vec<LineDiff>, left_or_right: LeftOrRight, value: &String) -> Option<usize> {
     for (i, diff) in diffs.iter().enumerate().rev() {
-        let existing: &String;
-        let space: &String;
+        let existing: String;
         match left_or_right {
             LeftOrRight::Left => {
-                existing = &diff.right;
-                space = &diff.left;
+                if diff.left.is_some() {
+                    return None;
+                }
+                existing = diff.right.clone().unwrap();
             }
             LeftOrRight::Right => {
-                existing = &diff.left;
-                space = &diff.right;
+                if diff.right.is_some() {
+                    return None;
+                }
+                existing = diff.left.clone().unwrap();
             }
         }
-        if space != "" {
-            return None;
-        }
-        if similar(existing, value) {
+        if similar(&existing, value) {
             return Some(i);
         }
     }
@@ -168,9 +182,9 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                 ChangeTag::Equal => {
                     let diff = LineDiff {
                         left_lineno: change.old_index().unwrap() as i64 + 1,
-                        left: value.clone(),
+                        left: Some(value.clone()),
                         right_lineno: change.new_index().unwrap() as i64 + 1,
-                        right: value.clone(),
+                        right: Some(value.clone()),
                     };
                     diffs.push(diff);
                 }
@@ -182,13 +196,13 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                         let hole_left = find_hole(&diffs, LeftOrRight::Left, &value);
                         if hole_left.is_some() {
                             diffs[hole_left.unwrap()].left_lineno = lineno;
-                            diffs[hole_left.unwrap()].left = value.clone();
+                            diffs[hole_left.unwrap()].left = Some(value.clone());
                         } else {
                             let diff = LineDiff {
                                 left_lineno: lineno,
-                                left: value.clone(),
+                                left: Some(value.clone()),
                                 right_lineno: -1,
-                                right: String::from(""),
+                                right: None,
                             };
                             diffs.push(diff);
                         }
@@ -198,13 +212,13 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                         let hole_right = find_hole(&diffs, LeftOrRight::Right, &value);
                         if hole_right.is_some() {
                             diffs[hole_right.unwrap()].right_lineno = lineno;
-                            diffs[hole_right.unwrap()].right = value.clone();
+                            diffs[hole_right.unwrap()].right = Some(value.clone());
                         } else {
                             let diff = LineDiff {
                                 left_lineno: -1,
-                                left: String::from(""),
+                                left: None,
                                 right_lineno: lineno,
-                                right: value.clone(),
+                                right: Some(value.clone()),
                             };
                             diffs.push(diff);
                         }
@@ -213,19 +227,10 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
             }
         }
     }
-    fn f(diff: &LineDiff) -> LinePartsDiff {
-        let (x, y) = diff_lines(diff.left.clone(), diff.right.clone());
-        LinePartsDiff {
-            left_lineno: diff.left_lineno,
-            left: x,
-            right_lineno: diff.right_lineno,
-            right: y,
-        }
-    }
-    diffs.iter().map(f).collect()
+    diffs.iter().map(convert_diff).collect()
 }
 
-fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
+fn generate_html(diff: Vec<LinePartsDiff>, _column_limit: usize) -> String {
     let mut html = String::new();
     let mut left = String::new();
     let mut right = String::new();
@@ -241,12 +246,12 @@ fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
     html.push_str("<div class=\"ocdiff-container\">");
 
     for line_diff in diff {
-        let _max_width = line_diff.left.width().max(line_diff.right.width());
-        let _number_of_lines = (_max_width + (column_limit - 1)) / column_limit;
+        // let _max_width = line_diff.left.width().max(line_diff.right.width());
+        // let _number_of_lines = (_max_width + (column_limit - 1)) / column_limit;
 
-        left.push_str(generate_html_parts(&line_diff.left.parts).as_str());
+        left.push_str(generate_html_parts(line_diff.left).as_str());
         left.push_str("\n");
-        right.push_str(generate_html_parts(&line_diff.right.parts).as_str());
+        right.push_str(generate_html_parts(line_diff.right).as_str());
         right.push_str("\n");
     }
 
@@ -262,7 +267,12 @@ fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
     html
 }
 
-fn generate_html_parts(parts: &Vec<Part>) -> String {
+fn generate_html_parts(parts_diff: Option<PartsDiff>) -> String {
+    if parts_diff.is_none() {
+        return String::from("<span class=\"ocdiff-line ocdiff-none\"></span>");
+    }
+    let parts = &parts_diff.unwrap().parts;
+
     let mut html = String::new();
 
     for part in parts {
