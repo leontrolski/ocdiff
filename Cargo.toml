@@ -8,6 +8,7 @@ pyo3 = "0.20.0"
 similar = "2.5.0"
 html-escape = "0.2.13"
 unicode-width = "0.1.11"
+levenshtein = "1.0.5"
 
 [lib]
 name = "ocdiff"

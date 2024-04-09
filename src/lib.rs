@@ -1,9 +1,11 @@
 extern crate html_escape;
+extern crate levenshtein;
 extern crate pyo3;
 extern crate similar;
 extern crate unicode_width;
 
 use html_escape::encode_text;
+use levenshtein::levenshtein;
 use pyo3::prelude::*;
 use similar::{ChangeTag, TextDiff};
 use unicode_width::UnicodeWidthStr;
@@ -117,6 +119,40 @@ fn diff_lines(a: String, b: String) -> (PartsDiff, PartsDiff) {
     (x, y)
 }
 
+fn similar(a: &String, b: &String) -> bool {
+    let distance = levenshtein(a.as_str(), b.as_str());
+    println!("{} {} {}", a, b, distance);
+    distance < 5 || (distance as f64 / (a.len() + b.len()) as f64) < 0.3
+}
+
+enum LeftOrRight {
+    Left,
+    Right,
+}
+fn find_hole(diffs: &Vec<LineDiff>, left_or_right: LeftOrRight, value: &String) -> Option<usize> {
+    for (i, diff) in diffs.iter().enumerate().rev() {
+        let existing: &String;
+        let space: &String;
+        match left_or_right {
+            LeftOrRight::Left => {
+                existing = &diff.right;
+                space = &diff.left;
+            }
+            LeftOrRight::Right => {
+                existing = &diff.left;
+                space = &diff.right;
+            }
+        }
+        if space != "" {
+            return None;
+        }
+        if similar(existing, value) {
+            return Some(i);
+        }
+    }
+    None
+}
+
 fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDiff> {
     let diff = TextDiff::from_lines(&a, &b);
     let mut unified = diff.unified_diff();
@@ -140,22 +176,13 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                 }
                 _ => {
                     let is_left = change.old_index().is_some();
-                    let lineno: i64;
                     if is_left {
-                        lineno = change.old_index().unwrap() as i64 + 1;
-                        assert!(change.new_index().is_none())
-                    } else {
-                        lineno = change.new_index().unwrap() as i64 + 1;
-                    }
-                    let previous = diffs.last();
-                    let previous_left_empty = previous.is_some() && previous.unwrap().left == "";
-                    let previous_right_empty = previous.is_some() && previous.unwrap().right == "";
-
-                    if is_left {
-                        if previous_left_empty {
-                            let i = diffs.len() - 1;
-                            diffs[i].left_lineno = lineno;
-                            diffs[i].left = value.clone();
+                        assert!(change.new_index().is_none());
+                        let lineno = change.old_index().unwrap() as i64 + 1;
+                        let hole_left = find_hole(&diffs, LeftOrRight::Left, &value);
+                        if hole_left.is_some() {
+                            diffs[hole_left.unwrap()].left_lineno = lineno;
+                            diffs[hole_left.unwrap()].left = value.clone();
                         } else {
                             let diff = LineDiff {
                                 left_lineno: lineno,
@@ -166,10 +193,12 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
                             diffs.push(diff);
                         }
                     } else {
-                        if previous_right_empty {
-                            let i = diffs.len() - 1;
-                            diffs[i].right_lineno = lineno;
-                            diffs[i].right = value.clone();
+                        assert!(change.old_index().is_none());
+                        let lineno = change.new_index().unwrap() as i64 + 1;
+                        let hole_right = find_hole(&diffs, LeftOrRight::Right, &value);
+                        if hole_right.is_some() {
+                            diffs[hole_right.unwrap()].right_lineno = lineno;
+                            diffs[hole_right.unwrap()].right = value.clone();
                         } else {
                             let diff = LineDiff {
                                 left_lineno: -1,
@@ -203,7 +232,7 @@ fn generate_html(diff: Vec<LinePartsDiff>, column_limit: usize) -> String {
     html.push_str("<div>");
     html.push_str("<style>");
     html.push_str(
-        ".ocdiff-container { display: flex; background-color: #141414; color: #8a8a8a; }",
+        ".ocdiff-container { display: flex; background-color: #141414; color: #acacac; }",
     );
     html.push_str(".ocdiff-side { width: 50%; overflow-x: auto; margin: 0; padding: 1rem; }");
     html.push_str(".ocdiff-delete { color: red; }");
