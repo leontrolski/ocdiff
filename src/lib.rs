@@ -81,6 +81,7 @@ impl PartsDiff {
 }
 
 fn diff_lines(a: String, b: String) -> (Option<PartsDiff>, Option<PartsDiff>) {
+    // Make an inline diff, then convert to side-by-side
     let diff = TextDiff::from_chars(&a, &b);
     let mut x = PartsDiff { parts: Vec::new() };
     let mut y = PartsDiff { parts: Vec::new() };
@@ -110,6 +111,7 @@ fn diff_lines(a: String, b: String) -> (Option<PartsDiff>, Option<PartsDiff>) {
     (Some(x), Some(y))
 }
 fn convert_diff(diff: &LineDiff) -> LinePartsDiff {
+    // Convert a lines-level diff to a parts-level diff
     let x: Option<PartsDiff>;
     let y: Option<PartsDiff>;
     if diff.left.is_none() {
@@ -134,8 +136,8 @@ fn convert_diff(diff: &LineDiff) -> LinePartsDiff {
 }
 
 fn similar(a: &String, b: &String) -> bool {
+    // Are two lines similar
     let distance = levenshtein(a.as_str(), b.as_str());
-    println!("{} {} {}", a, b, distance);
     distance < 5 || (distance as f64 / (a.len() + b.len()) as f64) < 0.3
 }
 
@@ -144,7 +146,27 @@ enum LeftOrRight {
     Right,
 }
 fn find_hole(diffs: &Vec<LineDiff>, left_or_right: LeftOrRight, value: &String) -> Option<usize> {
+    // Iterate backwards finding a hole
+    let mut most_recent_hole = diffs.len();
     for (i, diff) in diffs.iter().enumerate().rev() {
+        // break if not a hole
+        match left_or_right {
+            LeftOrRight::Left => {
+                if diff.left.is_some() {
+                    break;
+                }
+            }
+            LeftOrRight::Right => {
+                if diff.right.is_some() {
+                    break;
+                }
+            }
+        }
+        most_recent_hole = i;
+    }
+    // Starting at the most recent hole, iterate forwards to find a hole
+    // where the opposite side looks similar.
+    for (i, diff) in diffs.iter().enumerate().skip(most_recent_hole) {
         let existing: String;
         match left_or_right {
             LeftOrRight::Left => {
