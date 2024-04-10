@@ -9,31 +9,71 @@ extern crate unicode_width;
 use html_escape::encode_text;
 use levenshtein::levenshtein;
 use pyo3::prelude::*;
-use similar::{ChangeTag, TextDiff};
+use similar::{Change, ChangeTag, TextDiff};
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Clone)]
+struct Line {
+    lineno: usize,
+    value: String,
+}
+struct LineDiff {
+    left: Option<Line>,
+    right: Option<Line>,
+}
 enum Part {
     Equal(String),
     Delete(String),
     Insert(String),
 }
-struct PartsDiff {
+struct Parts {
+    lineno: usize,
     parts: Vec<Part>,
 }
-struct LinePartsDiff {
-    left_lineno: i64,
-    left: Option<PartsDiff>,
-    right_lineno: i64,
-    right: Option<PartsDiff>,
+struct PartsDiff {
+    left: Option<Parts>,
+    right: Option<Parts>,
 }
-struct LineDiff {
-    left_lineno: i64,
-    left: Option<String>, // where None is no string
-    right_lineno: i64,
-    right: Option<String>, // where None is no string
+impl Part {
+    fn width(&self) -> usize {
+        match self {
+            Part::Equal(s) | Part::Delete(s) | Part::Insert(s) => {
+                UnicodeWidthStr::width(s.as_str())
+            }
+        }
+    }
 }
-impl PartsDiff {
+
+enum Side {
+    Both(Line, Line),
+    Left(Line),
+    Right(Line),
+}
+fn side(change: &Change<&str>) -> Side {
+    let value = String::from(change.value().trim_end_matches('\n'));
+    match (change.old_index(), change.new_index()) {
+        (Some(index_l), Some(index_r)) => Side::Both(
+            Line {
+                lineno: index_l + 1,
+                value: value.clone(),
+            },
+            Line {
+                lineno: index_r + 1,
+                value,
+            },
+        ),
+        (Some(index_l), None) => Side::Left(Line {
+            lineno: index_l + 1,
+            value,
+        }),
+        (None, Some(index_r)) => Side::Right(Line {
+            lineno: index_r + 1,
+            value,
+        }),
+        _ => unreachable!("At least one index should be Some"),
+    }
+}
+// Parts have self-mutating methods to push to them
+impl Parts {
     fn push_equal(&mut self, value: &str) {
         match &mut self.parts.last_mut() {
             Some(Part::Equal(s)) => {
@@ -68,182 +108,133 @@ impl PartsDiff {
         }
     }
     fn width(&self) -> usize {
-        let mut width: usize = 0;
-        for part in &self.parts {
-            match part {
-                Part::Equal(s) => width += UnicodeWidthStr::width(s.as_str()),
-                Part::Delete(s) => width += UnicodeWidthStr::width(s.as_str()),
-                Part::Insert(s) => width += UnicodeWidthStr::width(s.as_str()),
-            }
-        }
-        width
+        self.parts.iter().fold(0, |acc, x| acc + x.width())
     }
 }
-
-fn diff_lines(a: String, b: String) -> (Option<PartsDiff>, Option<PartsDiff>) {
-    // Make an inline diff, then convert to side-by-side
-    let diff = TextDiff::from_chars(&a, &b);
-    let mut x = PartsDiff { parts: Vec::new() };
-    let mut y = PartsDiff { parts: Vec::new() };
+// Make an inline diff, then convert to side-by-side
+fn diff_lines(a: &Line, b: &Line) -> (Option<Parts>, Option<Parts>) {
+    let diff = TextDiff::from_chars(&a.value, &b.value);
+    let mut x = Parts {
+        lineno: a.lineno,
+        parts: Vec::new(),
+    };
+    let mut y = Parts {
+        lineno: b.lineno,
+        parts: Vec::new(),
+    };
     for change in diff.iter_all_changes() {
         let value = change.value();
-        match change.tag() {
-            ChangeTag::Equal => {
+        match (change.tag(), side(&change)) {
+            (ChangeTag::Equal, Side::Both(_, _)) => {
                 x.push_equal(value);
                 y.push_equal(value);
             }
-            ChangeTag::Delete => {
-                if change.old_index().is_some() {
-                    x.push_delete(value);
-                } else {
-                    y.push_delete(value)
-                }
-            }
-            ChangeTag::Insert => {
-                if change.old_index().is_some() {
-                    x.push_insert(value);
-                } else {
-                    y.push_insert(value)
-                }
-            }
+            (ChangeTag::Delete, Side::Left(_)) => x.push_delete(value),
+            (ChangeTag::Delete, Side::Right(_)) => y.push_delete(value),
+            (ChangeTag::Insert, Side::Left(_)) => x.push_insert(value),
+            (ChangeTag::Insert, Side::Right(_)) => y.push_insert(value),
+            _ => unreachable!("Unexpected tag, side"),
         }
     }
     (Some(x), Some(y))
 }
-fn convert_diff(diff: &LineDiff) -> LinePartsDiff {
-    // Convert a lines-level diff to a parts-level diff
-    let x: Option<PartsDiff>;
-    let y: Option<PartsDiff>;
-    if diff.left.is_none() {
-        x = None;
-        y = Some(PartsDiff {
-            parts: vec![Part::Insert(diff.right.clone().unwrap())],
-        });
-    } else if diff.right.is_none() {
-        x = Some(PartsDiff {
-            parts: vec![Part::Delete(diff.left.clone().unwrap())],
-        });
-        y = None;
-    } else {
-        (x, y) = diff_lines(diff.left.clone().unwrap(), diff.right.clone().unwrap());
-    }
-    LinePartsDiff {
-        left_lineno: diff.left_lineno,
-        left: x,
-        right_lineno: diff.right_lineno,
-        right: y,
+// Convert a lines-level diff to a parts-level diff
+fn convert_diff(diff: &LineDiff) -> PartsDiff {
+    match (&diff.left, &diff.right) {
+        (None, Some(right)) => PartsDiff {
+            left: None,
+            right: Some(Parts {
+                lineno: right.lineno,
+                parts: vec![Part::Insert(right.value.clone())],
+            }),
+        },
+        (Some(left), None) => PartsDiff {
+            left: Some(Parts {
+                lineno: left.lineno,
+                parts: vec![Part::Delete(left.value.clone())],
+            }),
+            right: None,
+        },
+        (Some(left), Some(right)) => {
+            let (x, y) = diff_lines(left, right);
+            PartsDiff { left: x, right: y }
+        }
+        _ => panic!("Invalid LineDiff structure"),
     }
 }
-
+// Are two lines similar
 fn similar(a: &String, b: &String) -> bool {
-    // Are two lines similar
     let distance = levenshtein(a.as_str(), b.as_str());
     distance < 5 || (distance as f64 / (a.len() + b.len()) as f64) < 0.3
 }
 
-enum LeftOrRight {
-    Left,
-    Right,
-}
-fn find_hole(diffs: &Vec<LineDiff>, left_or_right: LeftOrRight, value: &String) -> Option<usize> {
+fn find_hole(diffs: &Vec<LineDiff>, left: bool, value: &String) -> Option<usize> {
     // Iterate backwards finding a hole
-    let mut most_recent_hole = diffs.len();
-    for (i, diff) in diffs.iter().enumerate().rev() {
-        // break if not a hole
-        match left_or_right {
-            LeftOrRight::Left => {
-                if diff.left.is_some() {
-                    break;
-                }
-            }
-            LeftOrRight::Right => {
-                if diff.right.is_some() {
-                    break;
-                }
-            }
-        }
-        most_recent_hole = i;
-    }
+    let right = !left;
+    let most_recent_hole = diffs
+        .iter()
+        .enumerate()
+        .rev()
+        // stop iterating as soon as we encounter a non-hole
+        .take_while(|(_, diff)| (left && diff.left.is_none()) || (right && diff.right.is_none()))
+        .last()
+        .map(|(i, _)| i)
+        .unwrap_or(diffs.len());
+
     // Starting at the most recent hole, iterate forwards to find a hole
     // where the opposite side looks similar.
     for (i, diff) in diffs.iter().enumerate().skip(most_recent_hole) {
-        let existing: String;
-        match left_or_right {
-            LeftOrRight::Left => {
-                if diff.left.is_some() {
-                    return None;
-                }
-                existing = diff.right.clone().unwrap();
-            }
-            LeftOrRight::Right => {
-                if diff.right.is_some() {
-                    return None;
-                }
-                existing = diff.left.clone().unwrap();
-            }
-        }
-        if similar(&existing, value) {
+        let existing = match (left, &diff.left, &diff.right) {
+            (true, Some(_), _) => return None,
+            (false, _, Some(_)) => return None,
+            (true, _, Some(right)) => right,
+            (false, Some(left), _) => left,
+            _ => unreachable!("At least one side should be Some"),
+        };
+        if similar(&existing.value, value) {
             return Some(i);
         }
     }
     None
 }
 
-fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LinePartsDiff> {
-    let diff = TextDiff::from_lines(&a, &b);
+fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<PartsDiff> {
+    let diff = TextDiff::from_lines(a, b);
     let mut unified = diff.unified_diff();
-    unified.context_radius(context_lines.unwrap_or(1000)); // We default to just a large number
+    context_lines.map(|c| unified.context_radius(c));
 
     let mut diffs: Vec<LineDiff> = Vec::new();
 
     for hunk in unified.iter_hunks() {
         for change in hunk.iter_changes() {
-            let value = String::from(change.value().trim_end_matches('\n'));
-
-            match change.tag() {
-                ChangeTag::Equal => {
+            match side(&change) {
+                Side::Both(line_l, line_r) => {
                     let diff = LineDiff {
-                        left_lineno: change.old_index().unwrap() as i64 + 1,
-                        left: Some(value.clone()),
-                        right_lineno: change.new_index().unwrap() as i64 + 1,
-                        right: Some(value.clone()),
+                        left: Some(line_l),
+                        right: Some(line_r),
                     };
                     diffs.push(diff);
                 }
-                _ => {
-                    let is_left = change.old_index().is_some();
-                    if is_left {
-                        assert!(change.new_index().is_none());
-                        let lineno = change.old_index().unwrap() as i64 + 1;
-                        let hole_left = find_hole(&diffs, LeftOrRight::Left, &value);
-                        if hole_left.is_some() {
-                            diffs[hole_left.unwrap()].left_lineno = lineno;
-                            diffs[hole_left.unwrap()].left = Some(value.clone());
-                        } else {
-                            let diff = LineDiff {
-                                left_lineno: lineno,
-                                left: Some(value.clone()),
-                                right_lineno: -1,
-                                right: None,
-                            };
-                            diffs.push(diff);
-                        }
+                Side::Left(line) => {
+                    let hole = find_hole(&diffs, true, &line.value);
+                    if hole.is_some() {
+                        diffs[hole.unwrap()].left = Some(line);
                     } else {
-                        assert!(change.old_index().is_none());
-                        let lineno = change.new_index().unwrap() as i64 + 1;
-                        let hole_right = find_hole(&diffs, LeftOrRight::Right, &value);
-                        if hole_right.is_some() {
-                            diffs[hole_right.unwrap()].right_lineno = lineno;
-                            diffs[hole_right.unwrap()].right = Some(value.clone());
-                        } else {
-                            let diff = LineDiff {
-                                left_lineno: -1,
-                                left: None,
-                                right_lineno: lineno,
-                                right: Some(value.clone()),
-                            };
-                            diffs.push(diff);
-                        }
+                        diffs.push(LineDiff {
+                            left: Some(line),
+                            right: None,
+                        });
+                    }
+                }
+                Side::Right(line) => {
+                    let hole = find_hole(&diffs, false, &line.value);
+                    if hole.is_some() {
+                        diffs[hole.unwrap()].right = Some(line);
+                    } else {
+                        diffs.push(LineDiff {
+                            left: None,
+                            right: Some(line),
+                        });
                     }
                 }
             }
@@ -252,7 +243,7 @@ fn diff_a_and_b(a: String, b: String, context_lines: Option<usize>) -> Vec<LineP
     diffs.iter().map(convert_diff).collect()
 }
 
-fn generate_html(diff: Vec<LinePartsDiff>, _column_limit: usize) -> String {
+fn generate_html(diff: &Vec<PartsDiff>) -> String {
     let mut html = String::new();
     let mut left = String::new();
     let mut right = String::new();
@@ -268,12 +259,9 @@ fn generate_html(diff: Vec<LinePartsDiff>, _column_limit: usize) -> String {
     html.push_str("<div class=\"ocdiff-container\">");
 
     for line_diff in diff {
-        // let _max_width = line_diff.left.width().max(line_diff.right.width());
-        // let _number_of_lines = (_max_width + (column_limit - 1)) / column_limit;
-
-        left.push_str(generate_html_parts(line_diff.left).as_str());
+        left.push_str(generate_html_parts(&line_diff.left).as_str());
         left.push_str("\n");
-        right.push_str(generate_html_parts(line_diff.right).as_str());
+        right.push_str(generate_html_parts(&line_diff.right).as_str());
         right.push_str("\n");
     }
 
@@ -289,40 +277,26 @@ fn generate_html(diff: Vec<LinePartsDiff>, _column_limit: usize) -> String {
     html
 }
 
-fn generate_html_parts(parts_diff: Option<PartsDiff>) -> String {
-    if parts_diff.is_none() {
-        return String::from("<span class=\"ocdiff-line ocdiff-none\"></span>");
+fn generate_html_parts(parts_diff: &Option<Parts>) -> String {
+    match parts_diff {
+        None => String::from("<span class=\"ocdiff-line ocdiff-none\"></span>"),
+        Some(p) => p
+            .parts
+            .iter()
+            .map(|part| match part {
+                Part::Equal(text) => ("ocdiff-equal", text),
+                Part::Delete(text) => ("ocdiff-delete", text),
+                Part::Insert(text) => ("ocdiff-insert", text),
+            })
+            .map(|(class, text)| {
+                format!(
+                    "<span class=\"ocdiff-line {}\">{}</span>",
+                    class,
+                    encode_text(&text)
+                )
+            })
+            .collect::<String>(),
     }
-    let parts = &parts_diff.unwrap().parts;
-
-    let mut html = String::new();
-
-    for part in parts {
-        match part {
-            Part::Equal(text) => {
-                let escaped_text = encode_text(text);
-                html.push_str(&format!(
-                    "<span class=\"ocdiff-line ocdiff-equal\">{}</span>",
-                    escaped_text
-                ));
-            }
-            Part::Delete(text) => {
-                let escaped_text = encode_text(text);
-                html.push_str(&format!(
-                    "<span class=\"ocdiff-line ocdiff-delete\">{}</span>",
-                    escaped_text
-                ));
-            }
-            Part::Insert(text) => {
-                let escaped_text = encode_text(text);
-                html.push_str(&format!(
-                    "<span class=\"ocdiff-line ocdiff-insert\">{}</span>",
-                    escaped_text
-                ));
-            }
-        }
-    }
-    html
 }
 
 #[pymodule]
@@ -337,8 +311,9 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         context_lines: Option<usize>,
         column_limit: Option<usize>,
     ) -> PyResult<String> {
-        let line_parts_diffs = diff_a_and_b(a, b, context_lines);
-        let html = generate_html(line_parts_diffs, column_limit.unwrap_or(80));
+        let line_parts_diffs = diff_a_and_b(&a, &b, context_lines);
+        column_limit.unwrap_or(80);
+        let html = generate_html(&line_parts_diffs);
         Ok(html)
     }
 
