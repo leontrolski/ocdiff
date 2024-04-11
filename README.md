@@ -13,8 +13,7 @@ ocdiff.html_diff(
     a,
     b,
     context_lines=5,
-    # This isn't respected yet
-    column_limit=80,
+    max_total_width=80,
 )
 ```
 
@@ -37,7 +36,7 @@ git push origin v0.0.x
 
 # TODO
 
-- Implement `column_limit` - should just be a function of `Vec<LinePartsDiff>` to `Vec<LinePartsDiff>`.
+- Use console width stuff
 - Add console output with colours.
 - Add pytest plugin magic that plays with `rich`.
 - Write some docs.
