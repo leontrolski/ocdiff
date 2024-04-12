@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 
+extern crate ansi_term;
 extern crate html_escape;
 extern crate levenshtein;
 extern crate pyo3;
 extern crate similar;
 extern crate unicode_width;
 
+use ansi_term::Colour::RGB;
 use html_escape::encode_text;
 use levenshtein::levenshtein;
 use pyo3::prelude::*;
@@ -116,6 +118,9 @@ impl Parts {
                 self.parts.push(part)
             }
         }
+    }
+    fn width(&self) -> usize {
+        self.parts.iter().map(|part| part.str().width()).sum()
     }
 }
 
@@ -284,7 +289,7 @@ fn find_hole(diffs: &Vec<LineDiff>, left: bool, value: &String) -> Option<usize>
     None
 }
 
-fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<PartsDiff> {
+fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<LineDiff> {
     let diff = TextDiff::from_lines(a, b);
     let mut unified = diff.unified_diff();
     context_lines.map(|c| unified.context_radius(c));
@@ -326,7 +331,7 @@ fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<Par
             }
         }
     }
-    diffs.iter().map(convert_diff).collect()
+    diffs
 }
 
 fn find_max_lineno_width(diff: &Vec<PartsDiff>) -> usize {
@@ -343,6 +348,12 @@ fn find_max_lineno_width(diff: &Vec<PartsDiff>) -> usize {
         .find_map(|x| x)
         .unwrap_or(0);
     max_lineno_left.max(max_lineno_right).to_string().len()
+}
+fn find_widest_line_left(diff: &Vec<PartsDiff>) -> usize {
+    diff.iter()
+        .map(|parts_diff| parts_diff.left.as_ref().map_or(0, |parts| parts.width()))
+        .max()
+        .unwrap_or(0)
 }
 
 fn generate_lineno_str(
@@ -441,6 +452,58 @@ fn generate_html_parts(parts_diff: &Option<Parts>) -> String {
     }
 }
 
+fn generate_console(diff: &Vec<PartsDiff>, widest_line_left: usize) -> String {
+    let max_lineno_width = find_max_lineno_width(diff);
+    let mut stdout = String::from("\n");
+    let style_lineno = RGB(59, 59, 59).on(RGB(0, 0, 61));
+
+    let mut prev_lineno_left = 0;
+    let mut prev_lineno_right = 0;
+    for line_diff in diff {
+        let new_lineno_left = line_diff.left.as_ref().map(|parts| parts.lineno);
+        let new_lineno_right = line_diff.right.as_ref().map(|parts| parts.lineno);
+
+        let lineno_str_left =
+            generate_lineno_str(prev_lineno_left, new_lineno_left, max_lineno_width);
+        let lineno_str_right =
+            generate_lineno_str(prev_lineno_right, new_lineno_right, max_lineno_width);
+
+        stdout.push_str(style_lineno.paint(lineno_str_left).to_string().as_str());
+        stdout.push_str(generate_console_parts(&line_diff.left, Some(widest_line_left)).as_str());
+        stdout.push_str(style_lineno.paint(lineno_str_right).to_string().as_str());
+        stdout.push_str(generate_console_parts(&line_diff.right, None).as_str());
+        stdout.push_str("\n");
+
+        prev_lineno_left = new_lineno_left.unwrap_or(prev_lineno_left);
+        prev_lineno_right = new_lineno_right.unwrap_or(prev_lineno_right);
+    }
+    stdout
+}
+
+fn generate_console_parts(parts_diff: &Option<Parts>, pad_to_width: Option<usize>) -> String {
+    let style_equal = RGB(172, 172, 172);
+    let style_delete = RGB(255, 0, 0);
+    let style_insert = RGB(0, 128, 0);
+
+    let mut out = match parts_diff {
+        None => String::from(""),
+        Some(p) => p
+            .parts
+            .iter()
+            .map(|part| match part {
+                Part::Equal(text) => style_equal.paint(text).to_string(),
+                Part::Delete(text) => style_delete.paint(text).to_string(),
+                Part::Insert(text) => style_insert.paint(text).to_string(),
+            })
+            .collect::<String>(),
+    };
+    pad_to_width.map(|n| {
+        let original_width = parts_diff.as_ref().map_or(0, |o| o.width());
+        out.push_str(" ".repeat(n - original_width).as_str())
+    });
+    out
+}
+
 #[pymodule]
 #[pyo3(name = "ocdiff")]
 fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -453,10 +516,28 @@ fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
         context_lines: Option<usize>,
         max_total_width: Option<usize>,
     ) -> PyResult<String> {
-        let mut line_parts_diffs = diff_a_and_b(&a, &b, context_lines);
-        max_total_width.map(|n| line_parts_diffs = split_parts_diff(&line_parts_diffs, n));
-        let html = generate_html(&line_parts_diffs);
+        let line_diffs = diff_a_and_b(&a, &b, context_lines);
+        let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
+        max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
+        let html = generate_html(&parts_diffs);
         Ok(html)
+    }
+
+    #[pyfn(m)]
+    #[pyo3(name = "console_diff", signature = (a, b, *, context_lines=None, max_total_width=None))]
+    fn console_diff<'a>(
+        _py: Python<'a>,
+        a: String,
+        b: String,
+        context_lines: Option<usize>,
+        max_total_width: Option<usize>,
+    ) -> PyResult<String> {
+        let line_diffs = diff_a_and_b(&a, &b, context_lines);
+        let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
+        max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
+        let widest_line_left = find_widest_line_left(&parts_diffs);
+        let stdout = generate_console(&parts_diffs, widest_line_left);
+        Ok(stdout)
     }
 
     Ok(())

@@ -195,3 +195,37 @@ def test_html_diff_max_total_width() -> None:
     """.strip()
     # (Path(__file__).parent / "out.html").write_text(actual)
     assert _clean(actual) == expected
+
+
+# Run with -s to see
+def test_console_diff() -> None:
+    actual = ocdiff.console_diff(
+        (Path(__file__).parent / "a.json").read_text(),
+        (Path(__file__).parent / "b.json").read_text(),
+        context_lines=5,
+    )
+    print(actual)
+
+    actual = ocdiff.console_diff(
+        (Path(__file__).parent / "x.json").read_text(),
+        (Path(__file__).parent / "y.json").read_text(),
+        context_lines=1,
+    )
+    # print(actual)
+
+    ns = [str(n) for n in range(100)]
+    ms = copy.copy(ns)
+    ms.insert(50, "999")
+    actual = ocdiff.console_diff(
+        "\n".join(ns),
+        "\n".join(ms),
+        context_lines=2,
+    )
+    # print(actual)
+
+    actual = ocdiff.console_diff(
+        (Path(__file__).parent / "a.json").read_text(),
+        (Path(__file__).parent / "b.json").read_text(),
+        max_total_width=80,
+    ).strip()
+    # print(actual)

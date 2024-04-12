@@ -17,6 +17,15 @@ ocdiff.html_diff(
 )
 ```
 
+```python
+ocdiff.console_diff(
+    a,
+    b,
+    context_lines=5,
+    max_total_width=80,
+)
+```
+
 # Install/Develop
 
 ```shell
@@ -36,7 +45,7 @@ git push origin v0.0.x
 
 # TODO
 
-- Use console width stuff
-- Add console output with colours.
 - Add pytest plugin magic that plays with `rich`.
 - Write some docs.
+- Allow configuring everything.
+- Convert all hex to RGB.
