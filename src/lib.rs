@@ -292,7 +292,7 @@ fn find_hole(diffs: &Vec<LineDiff>, left: bool, value: &String) -> Option<usize>
 fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<LineDiff> {
     let diff = TextDiff::from_lines(a, b);
     let mut unified = diff.unified_diff();
-    context_lines.map(|c| unified.context_radius(c));
+    unified.context_radius(context_lines.unwrap_or(100_000)); // should be big enough
 
     let mut diffs: Vec<LineDiff> = Vec::new();
 

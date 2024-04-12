@@ -128,6 +128,7 @@ def test_html_diff_max_total_width() -> None:
     actual = ocdiff.html_diff(
         (Path(__file__).parent / "a.json").read_text(),
         (Path(__file__).parent / "b.json").read_text(),
+        context_lines=3,
         max_total_width=80,
     ).strip()
     expected = """
