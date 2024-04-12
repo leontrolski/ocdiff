@@ -30,6 +30,12 @@ ocdiff.console_diff(
 
 ![Screenshot](screenshot-1.png)
 
+# CLI usage
+
+```shell
+ocdiff a.txt b.txt
+```
+
 # Usage in `pytest` with [rich](https://github.com/Textualize/rich)
 
 In your `conftest.py`, add:
