@@ -1,5 +1,6 @@
 import copy
 from pathlib import Path
+from subprocess import check_output
 import ocdiff
 
 
@@ -230,3 +231,52 @@ def test_console_diff() -> None:
         max_total_width=80,
     ).strip()
     # print(actual)
+
+
+def test_cli() -> None:
+    # Do a basic cli test
+    actual = check_output(
+        "ocdiff tests/a.json tests/b.json --context-lines 2 --html", shell=True
+    )
+    expected = """
+<span class="ocdiff-lineno"> 4  </span><span class="ocdiff-line ocdiff-equal">        "GlossDiv": {</span>
+<span class="ocdiff-lineno"> 5  </span><span class="ocdiff-line ocdiff-delete">            "title": "S",</span>
+<span class="ocdiff-lineno"> 6  </span><span class="ocdiff-line ocdiff-equal">            "GlossList": {</span>
+<span class="ocdiff-lineno"> 7  </span><span class="ocdiff-line ocdiff-equal">                "GlossEntry": {</span>
+<span class="ocdiff-lineno"> 8  </span><span class="ocdiff-line ocdiff-equal">                    "ID": "SGML",</span>
+<span class="ocdiff-lineno"> 9  </span><span class="ocdiff-line ocdiff-equal">                    "SortAs": "SGML",</span>
+<span class="ocdiff-lineno"> ⋮  </span><span class="ocdiff-line ocdiff-none"></span>
+<span class="ocdiff-lineno"> 12 </span><span class="ocdiff-line ocdiff-equal">                    "Abbrev": "ISO 8879:1986",</span>
+<span class="ocdiff-lineno"> 13 </span><span class="ocdiff-line ocdiff-equal">                    "GlossDef": {</span>
+<span class="ocdiff-lineno"> 14 </span><span class="ocdiff-line ocdiff-equal">                        "para": "A </span><span class="ocdiff-line ocdiff-delete">meta-markup language, used </span><span class="ocdiff-line ocdiff-equal">to create markup languages such as DocBook.",</span>
+<span class="ocdiff-lineno"> 15 </span><span class="ocdiff-line ocdiff-equal">                        "GlossSeeAlso": [</span>
+<span class="ocdiff-lineno"> 16 </span><span class="ocdiff-line ocdiff-delete">                            "GML",</span>
+<span class="ocdiff-lineno"> 17 </span><span class="ocdiff-line ocdiff-equal">                            "XML"</span>
+<span class="ocdiff-lineno"> 18 </span><span class="ocdiff-line ocdiff-equal">                        ]</span>
+<span class="ocdiff-lineno"> 19 </span><span class="ocdiff-line ocdiff-equal">                    },</span>
+<span class="ocdiff-lineno"> 20 </span><span class="ocdiff-line ocdiff-equal">                    "GlossSee": "markup"</span>
+<span class="ocdiff-lineno">    </span><span class="ocdiff-line ocdiff-none"></span>
+<span class="ocdiff-lineno"> 21 </span><span class="ocdiff-line ocdiff-equal">                }</span>
+<span class="ocdiff-lineno"> 22 </span><span class="ocdiff-line ocdiff-equal">            }</span>
+</pre><pre class="ocdiff-side"><span class="ocdiff-lineno"> 3  </span><span class="ocdiff-line ocdiff-equal">        "title": "example glossary",</span>
+<span class="ocdiff-lineno"> 4  </span><span class="ocdiff-line ocdiff-equal">        "GlossDiv": {</span>
+<span class="ocdiff-lineno">    </span><span class="ocdiff-line ocdiff-none"></span>
+<span class="ocdiff-lineno"> 5  </span><span class="ocdiff-line ocdiff-equal">            "GlossList": {</span>
+<span class="ocdiff-lineno"> 6  </span><span class="ocdiff-line ocdiff-equal">                "GlossEntry</span><span class="ocdiff-line ocdiff-insert">yyyy</span><span class="ocdiff-line ocdiff-equal">": {</span>
+<span class="ocdiff-lineno"> 7  </span><span class="ocdiff-line ocdiff-equal">                    "ID": "SGML",</span>
+<span class="ocdiff-lineno"> 8  </span><span class="ocdiff-line ocdiff-equal">                    "SortAs": "SGML",</span>
+<span class="ocdiff-lineno"> ⋮  </span><span class="ocdiff-line ocdiff-none"></span>
+<span class="ocdiff-lineno"> 11 </span><span class="ocdiff-line ocdiff-equal">                    "Abbrev": "ISO 8879:1986",</span>
+<span class="ocdiff-lineno"> 12 </span><span class="ocdiff-line ocdiff-equal">                    "GlossDef": {</span>
+<span class="ocdiff-lineno"> 13 </span><span class="ocdiff-line ocdiff-equal">                        "para": "A to create markup languages such as DocBook.",</span>
+<span class="ocdiff-lineno"> 14 </span><span class="ocdiff-line ocdiff-equal">                        "GlossSeeAlso": [</span>
+<span class="ocdiff-lineno">    </span><span class="ocdiff-line ocdiff-none"></span>
+<span class="ocdiff-lineno"> 15 </span><span class="ocdiff-line ocdiff-equal">                            "XML"</span>
+<span class="ocdiff-lineno"> 16 </span><span class="ocdiff-line ocdiff-equal">                        ]</span>
+<span class="ocdiff-lineno"> 17 </span><span class="ocdiff-line ocdiff-equal">                    },</span>
+<span class="ocdiff-lineno"> 18 </span><span class="ocdiff-line ocdiff-equal">                    "GlossSee": "markup"</span><span class="ocdiff-line ocdiff-insert">,</span>
+<span class="ocdiff-lineno"> 19 </span><span class="ocdiff-line ocdiff-insert">                    "Hullo": 42</span>
+<span class="ocdiff-lineno"> 20 </span><span class="ocdiff-line ocdiff-equal">                }</span>
+<span class="ocdiff-lineno"> 21 </span><span class="ocdiff-line ocdiff-equal">            }</span>
+""".strip()
+    assert _clean(actual.decode()) == expected

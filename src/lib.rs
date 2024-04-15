@@ -192,7 +192,10 @@ fn convert_diff(diff: &LineDiff) -> PartsDiff {
             let (x, y) = diff_lines(left, right);
             PartsDiff { left: x, right: y }
         }
-        _ => panic!("Invalid LineDiff structure"),
+        (None, None) => PartsDiff {
+            left: None,
+            right: None,
+        },
     }
 }
 
@@ -280,7 +283,7 @@ fn find_hole(diffs: &Vec<LineDiff>, left: bool, value: &String) -> Option<usize>
             (false, _, Some(_)) => return None,
             (true, _, Some(right)) => right,
             (false, Some(left), _) => left,
-            _ => unreachable!("At least one side should be Some"),
+            (_, None, None) => return None,
         };
         if similar(&existing.value, value) {
             return Some(i);
@@ -306,30 +309,29 @@ fn diff_a_and_b(a: &String, b: &String, context_lines: Option<usize>) -> Vec<Lin
                     };
                     diffs.push(diff);
                 }
-                Side::Left(line) => {
-                    let hole = find_hole(&diffs, true, &line.value);
-                    if hole.is_some() {
-                        diffs[hole.unwrap()].left = Some(line);
-                    } else {
-                        diffs.push(LineDiff {
-                            left: Some(line),
-                            right: None,
-                        });
-                    }
-                }
-                Side::Right(line) => {
-                    let hole = find_hole(&diffs, false, &line.value);
-                    if hole.is_some() {
-                        diffs[hole.unwrap()].right = Some(line);
-                    } else {
-                        diffs.push(LineDiff {
-                            left: None,
-                            right: Some(line),
-                        });
-                    }
-                }
+                Side::Left(line) => match find_hole(&diffs, true, &line.value) {
+                    Some(h) => diffs[h].left = Some(line),
+                    None => diffs.push(LineDiff {
+                        left: Some(line),
+                        right: None,
+                    }),
+                },
+                Side::Right(line) => match find_hole(&diffs, false, &line.value) {
+                    Some(h) => diffs[h].right = Some(line),
+                    None => diffs.push(LineDiff {
+                        left: None,
+                        right: Some(line),
+                    }),
+                },
             }
         }
+        diffs.push(LineDiff {
+            left: None,
+            right: None,
+        })
+    }
+    if diffs.len() != 0 {
+        diffs.pop();
     }
     diffs
 }
@@ -360,14 +362,19 @@ fn generate_lineno_str(
     prev_lineno: usize,
     new_lineno: Option<usize>,
     max_lineno_width: usize,
+    both_none: bool,
 ) -> String {
-    let lineno_str = new_lineno.map_or(String::from(""), |n| {
-        if prev_lineno == n {
-            String::from("…")
-        } else {
-            n.to_string()
-        }
-    });
+    let lineno_str = if both_none {
+        String::from("⋮")
+    } else {
+        new_lineno.map_or(String::from(""), |n| {
+            if prev_lineno == n {
+                String::from("…")
+            } else {
+                n.to_string()
+            }
+        })
+    };
     format!(
         "{:^width$}",
         lineno_str,
@@ -384,12 +391,12 @@ fn generate_html(diff: &Vec<PartsDiff>) -> String {
     html.push_str("<div>");
     html.push_str("<style>");
     html.push_str(
-        ".ocdiff-container { display: flex; background-color: #141414; color: #acacac; }",
+        ".ocdiff-container { display: flex; background-color: rgb(20, 20, 20); color: rgb(172, 172, 172); }",
     );
     html.push_str(".ocdiff-side { overflow-x: auto; margin: 0; }");
-    html.push_str(".ocdiff-lineno { color: #3b3b3b; background-color: #00003d; }");
-    html.push_str(".ocdiff-delete { color: red; }");
-    html.push_str(".ocdiff-insert { color: green; }");
+    html.push_str(".ocdiff-lineno { color: rgb(59, 59, 59); background-color: rgb(0, 0, 61); }");
+    html.push_str(".ocdiff-delete { color: rgb(255, 0, 0); }");
+    html.push_str(".ocdiff-insert { color: rgb(0, 128, 0); }");
     html.push_str("</style>");
     html.push_str("<div class=\"ocdiff-container\">");
 
@@ -399,10 +406,19 @@ fn generate_html(diff: &Vec<PartsDiff>) -> String {
         let new_lineno_left = line_diff.left.as_ref().map(|parts| parts.lineno);
         let new_lineno_right = line_diff.right.as_ref().map(|parts| parts.lineno);
 
-        let lineno_str_left =
-            generate_lineno_str(prev_lineno_left, new_lineno_left, max_lineno_width);
-        let lineno_str_right =
-            generate_lineno_str(prev_lineno_right, new_lineno_right, max_lineno_width);
+        let both_none = line_diff.left.is_none() && line_diff.right.is_none();
+        let lineno_str_left = generate_lineno_str(
+            prev_lineno_left,
+            new_lineno_left,
+            max_lineno_width,
+            both_none,
+        );
+        let lineno_str_right = generate_lineno_str(
+            prev_lineno_right,
+            new_lineno_right,
+            max_lineno_width,
+            both_none,
+        );
 
         left.push_str(format!("<span class=\"ocdiff-lineno\">{}</span>", lineno_str_left).as_str());
         left.push_str(generate_html_parts(&line_diff.left).as_str());
@@ -463,10 +479,19 @@ fn generate_console(diff: &Vec<PartsDiff>, widest_line_left: usize) -> String {
         let new_lineno_left = line_diff.left.as_ref().map(|parts| parts.lineno);
         let new_lineno_right = line_diff.right.as_ref().map(|parts| parts.lineno);
 
-        let lineno_str_left =
-            generate_lineno_str(prev_lineno_left, new_lineno_left, max_lineno_width);
-        let lineno_str_right =
-            generate_lineno_str(prev_lineno_right, new_lineno_right, max_lineno_width);
+        let both_none = line_diff.left.is_none() && line_diff.right.is_none();
+        let lineno_str_left = generate_lineno_str(
+            prev_lineno_left,
+            new_lineno_left,
+            max_lineno_width,
+            both_none,
+        );
+        let lineno_str_right = generate_lineno_str(
+            prev_lineno_right,
+            new_lineno_right,
+            max_lineno_width,
+            both_none,
+        );
 
         stdout.push_str(style_lineno.paint(lineno_str_left).to_string().as_str());
         stdout.push_str(generate_console_parts(&line_diff.left, Some(widest_line_left)).as_str());
