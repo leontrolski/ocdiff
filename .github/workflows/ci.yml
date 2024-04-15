@@ -20,11 +20,6 @@ jobs:
           - macos-14
           # - windows
         python-version:
-          - '3.6'
-          - '3.7'
-          - '3.8'
-          - '3.9'
-          - '3.10'
           - '3.11'
           - '3.12'
         include:
@@ -36,16 +31,6 @@ jobs:
             platform: macos
           # - os: windows
           #   ls: dir
-          - python-version: 3.6
-            cibw-version: cp36
-          - python-version: 3.7
-            cibw-version: cp37
-          - python-version: 3.8
-            cibw-version: cp38
-          - python-version: 3.9
-            cibw-version: cp39
-          - python-version: 3.10
-            cibw-version: cp310
           - python-version: 3.11
             cibw-version: cp311
           - python-version: 3.12
