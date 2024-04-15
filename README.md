@@ -1,6 +1,6 @@
 # ocdiff
 
-Fast and simple side-by-side diff library for Python - wraps [similar](https://crates.io/crates/similar).
+Fast and simple side-by-side diff library for Python - wraps [similar](https://crates.io/crates/similar), inspired by [icdiff](https://github.com/jeffkaufman/icdiff).
 
 # Usage
 
