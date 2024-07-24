@@ -53,9 +53,15 @@ jobs:
           default: true
           override: true
 
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
       - name: install python dependencies
         run: |
-          pip install cibuildwheel==2.17.0 twine
+          pip install cibuildwheel==2.19.2 twine
 
       - name: build ${{ matrix.platform || matrix.os }} binaries
         run: python -m cibuildwheel --output-dir wheelhouse
@@ -72,6 +78,7 @@ jobs:
             rustup show
           CIBW_TEST_COMMAND: "pytest {project}/tests"
           CIBW_TEST_EXTRAS: test
+          CIBW_ARCHS_LINUX: auto aarch64
 
       # - name: build windows 32bit binaries
       #   if: matrix.os == 'windows'
