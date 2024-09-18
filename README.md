@@ -108,5 +108,5 @@ maturin develop
 - Upversion `pyproject.toml`.
 
 ```shell
-export VERSION=0.0.x; git tag -a v$VERSION head -m v$VERSION && git push origin v$VERSION
+export VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'); git tag -a v$VERSION head -m v$VERSION && git push origin v$VERSION
 ```
