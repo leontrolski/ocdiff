@@ -64,7 +64,7 @@ jobs:
 
       - name: install python dependencies
         run: |
-          pip install cibuildwheel==2.19.2 twine
+          pip install cibuildwheel==2.21.2 twine
 
       - name: build ${{ matrix.platform || matrix.os }} binaries
         run: python -m cibuildwheel --output-dir wheelhouse
