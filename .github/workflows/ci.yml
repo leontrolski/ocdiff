@@ -22,7 +22,7 @@ jobs:
         python-version:
           - '3.11'
           - '3.12'
-          - '3.13'
+          - '3.13-dev'
         include:
           - os: ubuntu-22.04
             platform: linux
@@ -36,7 +36,7 @@ jobs:
             cibw-version: cp311
           - python-version: 3.12
             cibw-version: cp312
-          - python-version: 3.13
+          - python-version: 3.13-dev
             cibw-version: cp313
 
     runs-on: ${{ matrix.os }}
