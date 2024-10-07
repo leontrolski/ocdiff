@@ -2,9 +2,10 @@
 authors = ["Oliver Russell <ojhrussell@gmail.com>"]
 name = "ocdiff"
 version = "0.0.1"
+edition = "2021"
 
 [dependencies]
-pyo3 = "0.20.0"
+pyo3 = "0.22.3"
 similar = "2.5.0"
 html-escape = "0.2.13"
 unicode-width = "0.1.11"

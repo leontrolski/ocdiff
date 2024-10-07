@@ -529,41 +529,42 @@ fn generate_console_parts(parts_diff: &Option<Parts>, pad_to_width: Option<usize
     out
 }
 
+#[pyfunction]
+#[pyo3(name = "html_diff", signature = (a, b, *, context_lines=None, max_total_width=None))]
+fn html_diff<'a>(
+    _py: Python<'a>,
+    a: String,
+    b: String,
+    context_lines: Option<usize>,
+    max_total_width: Option<usize>,
+) -> PyResult<String> {
+    let line_diffs = diff_a_and_b(&a, &b, context_lines);
+    let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
+    max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
+    let html = generate_html(&parts_diffs);
+    Ok(html)
+}
+
+#[pyfunction]
+#[pyo3(name = "console_diff", signature = (a, b, *, context_lines=None, max_total_width=None))]
+fn console_diff<'a>(
+    _py: Python<'a>,
+    a: String,
+    b: String,
+    context_lines: Option<usize>,
+    max_total_width: Option<usize>,
+) -> PyResult<String> {
+    let line_diffs = diff_a_and_b(&a, &b, context_lines);
+    let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
+    max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
+    let widest_line_left = find_widest_line_left(&parts_diffs);
+    let stdout = generate_console(&parts_diffs, widest_line_left);
+    Ok(stdout)
+}
+
 #[pymodule]
-#[pyo3(name = "ocdiff")]
-fn init_mod(_py: Python, m: &PyModule) -> PyResult<()> {
-    #[pyfn(m)]
-    #[pyo3(name = "html_diff", signature = (a, b, *, context_lines=None, max_total_width=None))]
-    fn html_diff<'a>(
-        _py: Python<'a>,
-        a: String,
-        b: String,
-        context_lines: Option<usize>,
-        max_total_width: Option<usize>,
-    ) -> PyResult<String> {
-        let line_diffs = diff_a_and_b(&a, &b, context_lines);
-        let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
-        max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
-        let html = generate_html(&parts_diffs);
-        Ok(html)
-    }
-
-    #[pyfn(m)]
-    #[pyo3(name = "console_diff", signature = (a, b, *, context_lines=None, max_total_width=None))]
-    fn console_diff<'a>(
-        _py: Python<'a>,
-        a: String,
-        b: String,
-        context_lines: Option<usize>,
-        max_total_width: Option<usize>,
-    ) -> PyResult<String> {
-        let line_diffs = diff_a_and_b(&a, &b, context_lines);
-        let mut parts_diffs = line_diffs.iter().map(convert_diff).collect();
-        max_total_width.map(|n| parts_diffs = split_parts_diff(&parts_diffs, n));
-        let widest_line_left = find_widest_line_left(&parts_diffs);
-        let stdout = generate_console(&parts_diffs, widest_line_left);
-        Ok(stdout)
-    }
-
+fn ocdiff(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(html_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(console_diff, m)?)?;
     Ok(())
 }
