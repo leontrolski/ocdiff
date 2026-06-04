@@ -14,18 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-22.04
-          - macos-13
-          - macos-14
-          # - windows
-        python-version:
-          - '3.11'
-          - '3.12'
-          - '3.13'
-          - '3.14'
+        os: [ubuntu-latest, macos-13, macos-14]
+        python-version: ['3.11', '3.12', '3.13', '3.14']
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             platform: linux
           - os: macos-13
             platform: macos
@@ -44,39 +36,24 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v6
       - name: set up python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: set up rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.81.0
+          toolchain: stable
           profile: minimal
           default: true
           override: true
-
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
-      - name: install python dependencies
-        run: |
-          pip install cibuildwheel==2.21.2 twine
-
-      - name: build ${{ matrix.platform || matrix.os }} binaries
-        run: python -m cibuildwheel --output-dir wheelhouse
+      - uses: pypa/cibuildwheel@v3.4.1
         env:
           CIBW_BUILD: '${{ matrix.cibw-version }}-*'
           CIBW_SKIP: '*-win32 *-musllinux*'
           CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
-          CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_BEFORE_BUILD: >
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
