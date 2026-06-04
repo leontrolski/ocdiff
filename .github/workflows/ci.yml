@@ -48,6 +48,11 @@ jobs:
           profile: minimal
           default: true
           override: true
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
       - uses: pypa/cibuildwheel@v3.4.1
         env:
           CIBW_BUILD: '${{ matrix.cibw-version }}-*'
