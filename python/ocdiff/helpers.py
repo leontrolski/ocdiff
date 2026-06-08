@@ -1,26 +1,35 @@
-import fcntl
 import os
-import struct
-import termios
 
 
 # From https://github.com/jeffkaufman/icdiff
+# See: https://github.com/bbhunter/icdiff/commit/173825cc5416377dc5d37d562b54a9854e385370
 def terminal_width() -> int:
-    try:
-        if os.name == "nt":
-            from ctypes import windll, create_string_buffer  # type: ignore[attr-defined]
+    if os.name == "nt":
+        try:
+            import struct
+            from ctypes import windll, create_string_buffer  # type: ignore
 
             fh = windll.kernel32.GetStdHandle(-12)  # stderr is -12
             csbi = create_string_buffer(22)
             windll.kernel32.GetConsoleScreenBufferInfo(fh, csbi)
             res = struct.unpack("hhhhHhhhhhh", csbi.raw)
-            # right - left + 1
-            return res[7] - res[5] + 1  # type: ignore[no-any-return]
-        else:
-            # From: https://gist.github.com/jtriley/1108174
-            fd = os.open(os.ctermid(), os.O_RDONLY)
-            cr = struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
-            os.close(fd)
-            return int(cr[1])
+            return res[7] - res[5] + 1  # type: ignore # right - left + 1
+        except Exception:
+            pass
+    else:
+        if width := ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2):
+            return width
+
+    return 80
+
+
+def ioctl_GWINSZ(fd: int) -> int | None:
+    import fcntl
+    import struct
+    import termios
+
+    try:
+        cr = struct.unpack("hhhh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "12345678"))  # type: ignore
     except Exception:
-        return 80
+        return None
+    return cr[1] if cr else None
