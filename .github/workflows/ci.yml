@@ -90,7 +90,7 @@ jobs:
 
       - name: upload to pypi
         if: startsWith(github.ref, 'refs/tags/')
-        run:
+        run: |
           pip install build twine
           twine upload wheelhouse/*.whl
         env:
