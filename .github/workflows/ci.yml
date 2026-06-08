@@ -91,7 +91,7 @@ jobs:
       - name: upload to pypi
         if: startsWith(github.ref, 'refs/tags/')
         run:
-          uv pip install build twine
+          pip install build twine
           twine upload wheelhouse/*.whl
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
